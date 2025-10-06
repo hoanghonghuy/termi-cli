@@ -14,3 +14,4 @@ Pillow==11.3.0
 ddgs==9.0.0
 rich==13.7.1
 SQLAlchemy==2.0.43
+unidecode=1.4.0

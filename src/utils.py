@@ -2,6 +2,7 @@ import os
 import re
 import subprocess
 from rich.console import Console
+from unidecode import unidecode
 
 ALLOWED_EXTENSIONS = {'.py', '.js', '.ts', '.html', '.css', '.scss', '.json', '.yaml', '.yml', 
                       '.md', '.java', '.cs', '.cpp', '.c', '.h', '.hpp', '.go', '.rs', '.php',
@@ -64,3 +65,12 @@ def execute_suggested_commands(text: str, console: Console):
             console.print(f"[bold green]✅ Thực thi hoàn tất.[/bold green]")
         except Exception as e:
             console.print(f"[bold red]Lỗi khi thực thi lệnh: {e}[/bold red]")
+            
+def sanitize_filename(name: str) -> str:
+    """Chuyển đổi một chuỗi bất kỳ thành một tên file an toàn."""
+    # Chuyển thành chữ thường, bỏ dấu
+    sanitized_name = unidecode(name).lower()
+    # Thay thế các ký tự không phải chữ, số, gạch dưới bằng gạch dưới
+    sanitized_name = re.sub(r'[^\w\s-]', '', sanitized_name).strip()
+    sanitized_name = re.sub(r'[-\s]+', '_', sanitized_name)
+    return sanitized_name
