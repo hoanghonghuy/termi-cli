@@ -1,0 +1,32 @@
+# Môi trường ảo
+.venv/
+venv/
+env/
+
+# File biến môi trường
+.env
+
+# Các file xác thực nhạy cảm
+credentials.json
+token.json
+
+# Cache của Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# File database
+*.db
+*.sqlite3
+
+# Lịch sử trò chuyện
+*.json
+
+# Thư mục của các IDE
+.idea/
+.vscode/
+
+# Thư mục build và distribution
+/dist/
+/build/
+*.egg-info/
