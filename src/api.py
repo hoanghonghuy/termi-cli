@@ -1,288 +1,142 @@
 # src/api.py
 """
-Wrapper an toàn cho Google Generative AI SDK (google.generativeai).
-Mục tiêu:
-- Giữ nguyên các hàm thường dùng trong project: configure_api, start_chat_session, send_message, list_models, get_model_token_limit.
-- Thực hiện lazy-import google.generativeai để tránh load native libs (gRPC/absl) ở thời điểm import module.
-- Cung cấp fallback rõ ràng (error messages) khi SDK không có hoặc gọi API lỗi.
-- Không thay đổi giao diện hàm (signature) để dễ tích hợp với code hiện có.
+Mô-đun này chịu trách nhiệm quản lý tương tác với API của Google Gemini.
 """
+import os
+import google.generativeai as genai
+from rich.table import Table
+from rich.console import Console
 
-from __future__ import annotations
+_current_api_key_index = 0
+_api_keys = []
 
-import logging
-import time
-from typing import Any, Dict, Iterable, Generator, List, Optional, Tuple
+# Import các tool và prompt builder
+from tools import web_search, database, calendar_tool, email_tool
+from tools import instruction_tool
+from tools import code_tool # Thêm tool mới
+from prompts import build_enhanced_instruction
 
-logger = logging.getLogger(__name__)
+# Ánh xạ tên tool tới hàm thực thi
+AVAILABLE_TOOLS = {
+    web_search.search_web.__name__: web_search.search_web,
+    database.get_db_schema.__name__: database.get_db_schema,
+    database.run_sql_query.__name__: database.run_sql_query,
+    calendar_tool.list_events.__name__: calendar_tool.list_events,
+    email_tool.search_emails.__name__: email_tool.search_emails,
+    instruction_tool.save_instruction.__name__: instruction_tool.save_instruction,
+    code_tool.refactor_code.__name__: code_tool.refactor_code,
+    code_tool.document_code.__name__: code_tool.document_code,
+}
 
-# Không import google.generativeai ở top-level để tránh load gRPC/absl sớm
-def _import_genai():
-    """
-    Lazy import google.generativeai. Ném ImportError nếu không có.
-    """
-    try:
-        import google.generativeai as genai  # type: ignore
-        return genai
-    except Exception as e:
-        # Ghi log chi tiết cho debug, nhưng không raise nguyên vẹn để phần gọi xử lý được.
-        logger.debug("Không thể import google.generativeai: %s", e, exc_info=True)
-        raise ImportError("google.generativeai chưa được cài hoặc không thể import. "
-                          "Vui lòng cài package chính chủ (pip install google-generativeai) "
-                          "và đảm bảo môi trường đã được cấu hình.") from e
+def configure_api(api_key: str):
+    """Cấu hình API key."""
+    genai.configure(api_key=api_key)
 
-
-# -------------------------
-# Public API functions
-# -------------------------
-def configure_api(api_key: str, **kwargs) -> None:
-    """
-    Cấu hình API key cho google.generativeai.
-    Gọi hàm này trước khi tạo session / gọi model.
-
-    Args:
-        api_key: API key (string)
-        **kwargs: additional options (ignored but accepted for compatibility)
-    Raises:
-        ImportError nếu SDK không có.
-        Exception nếu configure lỗi.
-    """
-    genai = _import_genai()
-    try:
-        # Một số SDK dùng genai.configure, tuỳ SDK phiên bản
-        if hasattr(genai, "configure"):
-            genai.configure(api_key=api_key)
-        else:
-            # Một số bản mới có thể dùng khác - bảo toàn call
-            # Ví dụ: genai.Client(...) -> not standardized; để logger thông báo
-            logger.debug("SDK không có hàm configure; tiếp tục mà không gọi configure().")
-    except Exception as e:
-        logger.exception("Lỗi khi cấu hình google.generativeai: %s", e)
-        raise
-
-
-def start_chat_session(model_name: str,
-                       system_instruction: Optional[str] = None,
-                       history: Optional[List[Dict[str, str]]] = None,
-                       cli_help_text: Optional[str] = None,
-                       **kwargs) -> Any:
-    """
-    Khởi tạo chat session (wrapper) dùng model của google.generativeai.
-    Trả về đối tượng session (SDK-specific) có method send_message.
-
-    Args:
-        model_name: Tên model (ví dụ "gemini-2.0-flash-exp")
-        system_instruction: system prompt (nếu có)
-        history: danh sách history theo định dạng [{'role': 'user'|'assistant'|'system', 'content': '...'}, ...]
-        cli_help_text: text hỗ trợ / help để gộp vào system instruction nếu cần
-        **kwargs: reserved for compatibility
-
-    Returns:
-        chat_session object (SDK provided)
-    Raises:
-        ImportError nếu SDK không cài, Exception nếu tạo session lỗi.
-    """
-    genai = _import_genai()
-
-    combined_system = None
-    if system_instruction and cli_help_text:
-        combined_system = f"{system_instruction}\n\n{cli_help_text}"
-    elif system_instruction:
-        combined_system = system_instruction
-    elif cli_help_text:
-        combined_system = cli_help_text
-
-    history = history or []
-
-    try:
-        # Cố gắng khởi tạo theo API phổ biến: GenerativeModel(...).start_chat(history=...)
-        if hasattr(genai, "GenerativeModel"):
-            model = genai.GenerativeModel(model_name, system_instruction=combined_system)
-            chat = model.start_chat(history=history)
-            return chat
-        else:
-            # Fallback nếu SDK khác phiên bản: thử genai.start_chat hoặc genai.chat
-            if hasattr(genai, "start_chat"):
-                return genai.start_chat(model=model_name, system_instruction=combined_system, history=history)
-            elif hasattr(genai, "chat"):
-                return genai.chat(model=model_name, system_instruction=combined_system, history=history)
-            else:
-                raise RuntimeError("Không tìm thấy API phù hợp trong google.generativeai để tạo chat session.")
-    except Exception as e:
-        logger.exception("Lỗi khi tạo chat session cho model %s: %s", model_name, e)
-        raise
-
-
-def send_message(chat_session: Any, prompt_parts: Iterable[str], stream: bool = True, timeout: Optional[int] = None) -> Generator[Any, None, None]:
-    """
-    Gửi message tới chat_session. Trả về generator các chunk nếu stream=True,
-    nếu SDK không hỗ trợ stream thì trả về generator có một chunk chứa toàn bộ text.
-
-    Args:
-        chat_session: đối tượng session trả về từ start_chat_session
-        prompt_parts: iterable các phần string (thường chỉ 1 phần user input)
-        stream: nếu True, cố gắng stream (SDK có hỗ trợ)
-        timeout: reserved (không bắt buộc)
-
-    Yields:
-        chunk objects (mỗi chunk mong chứa attribute .text hoặc key 'text')
-    """
-    # Gọi send_message trên chat_session; nhiều SDK hỗ trợ stream=True
-    try:
-        # Một số SDK expect list -> send_message(list, stream=True)
-        result = chat_session.send_message(prompt_parts, stream=stream, timeout=timeout)  # type: ignore
-        # Nếu result là generator -> return as-is
-        if hasattr(result, "__iter__") and not isinstance(result, (str, bytes, dict)):
-            # generator hoặc iterable
-            for chunk in result:
-                yield chunk
-            return
-        # Nếu result là object trả về 1 giá trị -> wrap thành generator
-        # Có thể là dict hoặc object với .text
-        class _SingleGen:
-            def __init__(self, value):
-                self.value = value
-            def __iter__(self):
-                yield self.value
-        for chunk in _SingleGen(result):
-            yield chunk
-        return
-    except TypeError as te:
-        # Một số SDK không chấp nhận stream kwarg -> thử không stream
-        logger.debug("send_message TypeError (try fallback non-stream): %s", te)
-        try:
-            resp = chat_session.send_message(prompt_parts, stream=False)  # type: ignore
-            # Normalize response to chunk-like object
-            text = None
-            if isinstance(resp, dict):
-                text = resp.get("text") or resp.get("message") or str(resp)
-                yield {"text": text}
-            else:
-                text = getattr(resp, "text", None)
-                if text is None:
-                    text = str(resp)
-                class Chunk:
-                    def __init__(self, t): self.text = t
-                yield Chunk(text)
-            return
-        except Exception as e:
-            logger.exception("Fallback non-stream send_message failed: %s", e)
-            raise
-    except Exception as e:
-        logger.exception("Lỗi khi gọi chat_session.send_message: %s", e)
-        # Thay vì trực tiếp raise, yield một chunk chứa thông báo lỗi để phần gọi xử lý hiển thị
-        try:
-            yield {"text": f"[ERROR] Lỗi khi gửi tới model: {e}"}
-        except Exception:
-            # cuối cùng raise nếu không thể yield
-            raise
-
-
-def list_models() -> List[Dict[str, Any]]:
-    """
-    Trả về danh sách models có thể dùng. Mỗi entry là dict chứa ít nhất 'name' và optional 'description'.
-    Nếu SDK không có hỗ trợ, trả về list rỗng.
-    """
-    try:
-        genai = _import_genai()
-    except ImportError:
-        return []
-
-    models = []
-    try:
-        # Ưu tiên genai.list_models() nếu có
-        if hasattr(genai, "list_models"):
-            for m in genai.list_models():
-                # m có thể là object hoặc dict
-                name = getattr(m, "name", None) or (m.get("name") if isinstance(m, dict) else None)
-                desc = getattr(m, "description", None) or (m.get("description") if isinstance(m, dict) else "")
-                models.append({"name": name, "description": desc})
-        else:
-            # fallback: không có list_models
-            logger.debug("SDK không hỗ trợ list_models().")
-    except Exception as e:
-        logger.exception("Lỗi khi lấy danh sách models: %s", e)
+def get_available_models() -> list[str]:
+    """Lấy danh sách các model name hỗ trợ generateContent."""
+    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     return models
+
+def list_models(console: Console):
+    """Liệt kê các model có sẵn."""
+    table = Table(title="✨ Danh sách Models Gemini Khả Dụng ✨")
+    table.add_column("Model Name", style="cyan", no_wrap=True)
+    table.add_column("Description", style="magenta")
+    console.print("Đang lấy danh sách models...")
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            table.add_row(m.name, m.description)
+    console.print(table)
+
+def start_chat_session(model_name: str, system_instruction: str = None, history: list = None, cli_help_text: str = ""):
+    """Khởi tạo chat session."""
+    enhanced_instruction = build_enhanced_instruction(cli_help_text)
+    if system_instruction:
+        enhanced_instruction = f"**PRIMARY DIRECTIVE (User-defined rules):**\n{system_instruction}\n\n---\n\n{enhanced_instruction}"
+
+    tools_config = list(AVAILABLE_TOOLS.values())
+    
+    model = genai.GenerativeModel(
+        model_name, 
+        system_instruction=enhanced_instruction,
+        tools=tools_config
+    )
+    chat = model.start_chat(history=history or [])
+    return chat
+
+def send_message(chat_session: genai.ChatSession, prompt_parts: list):
+    """
+    Gửi message và trả về một generator để xử lý streaming.
+    """
+    response = chat_session.send_message(prompt_parts, stream=True)
+    return response
+
+def get_token_usage(response):
+    """Trích xuất thông tin token usage từ response."""
+    try:
+        if hasattr(response, 'usage_metadata'):
+            usage = response.usage_metadata
+            return {
+                'prompt_tokens': getattr(usage, 'prompt_token_count', 0),
+                'completion_tokens': getattr(usage, 'candidates_token_count', 0),
+                'total_tokens': getattr(usage, 'total_token_count', 0)
+            }
+    except Exception:
+        pass
+    return None
 
 
 def get_model_token_limit(model_name: str) -> int:
-    """
-    Trả về giới hạn token đầu vào (input token limit) của model nếu SDK cung cấp,
-    nếu không biết thì sử dụng heuristic dựa trên tên model.
-    """
-    # Try SDK
+    """Lấy token limit của model."""
     try:
-        genai = _import_genai()
-        if hasattr(genai, "get_model"):
-            try:
-                m = genai.get_model(model_name)
-                # try attribute
-                if hasattr(m, "input_token_limit") and getattr(m, "input_token_limit"):
-                    return int(getattr(m, "input_token_limit"))
-                # try dict-like
-                if isinstance(m, dict) and "input_token_limit" in m:
-                    return int(m["input_token_limit"])
-            except Exception:
-                # ignore and fallback to heuristics
-                logger.debug("Không thể lấy model info từ SDK cho %s", model_name, exc_info=True)
-    except ImportError:
-        # SDK không cài -> fallback
-        pass
-    # Heuristic dựa trên tên
-    name = (model_name or "").lower()
-    if "flash" in name:
-        return 1_000_000
-    if "pro" in name:
-        return 2_000_000
-    if "gemini" in name:
-        return 1_048_576
-    # default
-    return 1_048_576
-
-
-# -------------------------
-# Utility functions (optional helpers)
-# -------------------------
-def extract_text_from_chunk(chunk: Any) -> str:
-    """
-    Chuẩn hoá một chunk thành string:
-    - Nếu chunk là dict và có 'text' key -> trả về value
-    - Nếu chunk có attribute .text -> trả về
-    - Nếu chunk có attribute .delta hoặc .message thì cũng thử
-    - Ngược lại trả string(chunk)
-    """
-    if chunk is None:
-        return ""
-    try:
-        if isinstance(chunk, dict):
-            if "text" in chunk and chunk["text"] is not None:
-                return str(chunk["text"])
-            # một số SDK trả {'delta': {'content': '...'}}
-            if "delta" in chunk:
-                d = chunk["delta"]
-                if isinstance(d, dict) and "content" in d:
-                    return str(d["content"] or "")
-            if "message" in chunk and chunk["message"] is not None:
-                return str(chunk["message"])
-            # fallback
-            return str(chunk)
-        # object-like
-        if hasattr(chunk, "text"):
-            return str(getattr(chunk, "text") or "")
-        if hasattr(chunk, "content"):
-            return str(getattr(chunk, "content") or "")
-        if hasattr(chunk, "delta"):
-            d = getattr(chunk, "delta")
-            if isinstance(d, dict) and "content" in d:
-                return str(d["content"] or "")
-        # fallback generic
-        return str(chunk)
+        model_info = genai.get_model(model_name)
+        if hasattr(model_info, 'input_token_limit'):
+            return model_info.input_token_limit
+        # Fallback cho các model không có thông tin
+        if 'flash' in model_name.lower():
+            return 1000000  # Flash models thường có 1M tokens
+        elif 'pro' in model_name.lower():
+            return 2000000  # Pro models thường có 2M tokens
     except Exception:
-        # bảo toàn: trả string repr để không crash
-        try:
-            return str(chunk)
-        except Exception:
-            return ""
+        pass
+    return 0
 
 
-# End of src/api.py
+def initialize_api_keys():
+    """Khởi tạo danh sách API keys từ .env"""
+    global _api_keys
+    _api_keys = []
+    
+    primary = os.getenv("GOOGLE_API_KEY")
+    if primary:
+        _api_keys.append(primary)
+    
+    # Thêm các key backup
+    i = 2
+    while True:
+        key_name = f"GOOGLE_API_KEY_{i}ND" if i == 2 else f"GOOGLE_API_KEY_{i}RD" if i == 3 else f"GOOGLE_API_KEY_{i}TH"
+        backup_key = os.getenv(key_name)
+        if backup_key:
+            _api_keys.append(backup_key)
+            i += 1
+        else:
+            break
+    
+    return _api_keys
+
+def get_current_api_key():
+    """Lấy API key hiện tại"""
+    global _current_api_key_index, _api_keys
+    if _current_api_key_index < len(_api_keys):
+        return _api_keys[_current_api_key_index]
+    return None
+
+def switch_to_next_api_key():
+    """Chuyển sang API key tiếp theo"""
+    global _current_api_key_index, _api_keys
+    _current_api_key_index += 1
+    if _current_api_key_index < len(_api_keys):
+        new_key = _api_keys[_current_api_key_index]
+        configure_api(new_key)
+        return True, f"Key #{_current_api_key_index + 1}"
+    return False, "Hết API keys"

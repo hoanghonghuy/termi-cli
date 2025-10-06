@@ -1,4 +1,3 @@
-# src/handlers.py
 import os
 import sys
 import json
@@ -7,47 +6,22 @@ import re
 import argparse
 from datetime import datetime
 import subprocess
-import logging
 
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
-
-# NOTE: lazy import google.generativeai (don't import at top-level to avoid native logs)
-# ✅ PATCH: thay vì `import google.generativeai as genai` ở top-level, dùng _get_genai() để lazy import
-# (một số chỗ trong file trước đó dùng genai; mình giữ logic đó nhưng import khi cần)
-# from google.api_core.exceptions import ResourceExhausted
+import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
 
 import api
 import utils
 from config import save_config, load_config
 
-logger = logging.getLogger(__name__)
-
 # --- CONSTANTS ---
 HISTORY_DIR = "chat_logs"
 
 
-# ---------------------------
-# Utility: lazy import genai
-# ---------------------------
-def _get_genai():
-    """
-    Lazy import google.generativeai. Nếu không import được, raise ImportError.
-    Giữ nguyên interface như trước khi code gốc dùng genai.
-    """
-    try:
-        import google.generativeai as genai  # type: ignore
-        return genai
-    except Exception as e:
-        logger.debug("Không thể import google.generativeai: %s", e, exc_info=True)
-        raise ImportError("Module 'google.generativeai' chưa cài hoặc không thể import.") from e
-
-
-# ---------------------------
-# HELPER FUNCTIONS
-# ---------------------------
+# --- HELPER FUNCTIONS ---
 def get_response_text_from_history(history_entry):
     """Trích xuất text từ một entry trong đối tượng history."""
     try:
@@ -61,123 +35,37 @@ def get_response_text_from_history(history_entry):
         return ""
 
 
-def _sanitize_chunk_text(text: str) -> str:
+def accumulate_response_stream(response_stream):
     """
-    Loại bỏ ký tự rác, CR, collapse nhiều newline để tránh render xấu.
-    ✅ PATCH: chuẩn hoá text streaming để tránh chuyện 'chữ cách chữ' hoặc nhiều dòng trống.
-    """
-    if not text:
-        return ""
-    # loại bỏ null bytes và CR
-    s = text.replace("\x00", "")
-    s = s.replace("\r", "")
-    # collapse >3 newline thành 2 newline
-    while "\n\n\n\n" in s:
-        s = s.replace("\n\n\n\n", "\n\n")
-    while "\n\n\n" in s:
-        s = s.replace("\n\n\n", "\n\n")
-    # trim trailing spaces on each line
-    s = "\n".join(line.rstrip() for line in s.splitlines())
-    return s
-
-
-def process_response_stream(response_stream, console: Console, output_format: str = "rich"):
-    """
-    Xử lý luồng phản hồi từ AI với format tùy chọn.
-
-    Giữ nguyên logic gốc (duyệt chunk, lấy part.text, function_call detection),
-    nhưng sanitize phần text trước khi in để UI ổn hơn.
+    Chỉ tích lũy text và function calls từ stream, KHÔNG in ra màn hình.
     """
     full_text = ""
     function_calls = []
-
     try:
         for chunk in response_stream:
-            # chunk có cấu trúc khác nhau tuỳ SDK. Gốc dùng chunk.candidates[0].content.parts
-            # Chúng ta cố gắng tương thích nhiều dạng:
-            parts = []
-            try:
-                # SDK gốc (có candidates)
-                if hasattr(chunk, "candidates") and chunk.candidates:
-                    cand0 = chunk.candidates[0]
-                    # trong nội dung candidate có `content.parts`
-                    content = getattr(cand0, "content", None)
-                    if content and hasattr(content, "parts"):
-                        parts = list(content.parts)
-                # fallback: chunk có attribute .text hoặc dict-like
-                if not parts:
-                    if hasattr(chunk, "text"):
-                        # tạo pseudo-part
-                        class _P:
-                            def __init__(self, text): self.text = text
-                        parts = [_P(getattr(chunk, "text"))]
-                    elif isinstance(chunk, dict):
-                        # dict có thể chứa 'text' hoặc 'candidates'
-                        if "text" in chunk and chunk["text"]:
-                            class _P:
-                                def __init__(self, text): self.text = text
-                            parts = [_P(chunk["text"])]
-                        elif "candidates" in chunk and chunk["candidates"]:
-                            try:
-                                cand0 = chunk["candidates"][0]
-                                cont = cand0.get("content", {})
-                                for p in cont.get("parts", []):
-                                    class _P2:
-                                        def __init__(self, text): self.text = text
-                                    parts.append(_P2(p.get("text")))
-                            except Exception:
-                                pass
-            except Exception:
-                # fallback tổng quát: convert chunk -> str
-                try:
-                    txt = str(chunk)
-                    class _P3:
-                        def __init__(self, text): self.text = text
-                    parts = [_P3(txt)]
-                except Exception:
-                    parts = []
-
-            # process parts
-            for part in parts:
-                try:
-                    part_text = getattr(part, "text", None)
-                    if not part_text:
-                        # nếu có function_call trên part
-                        if hasattr(part, "function_call") and part.function_call:
-                            function_calls.append(part.function_call)
-                        continue
-                    sanitized = _sanitize_chunk_text(part_text)
-                    full_text += sanitized
-
-                    # Render theo format (giữ hành vi real-time nhưng sanitized)
-                    if output_format == "rich":
-                        # ✅ PATCH: in từng chunk đã sanitize bằng Markdown (giúp render code block)
-                        try:
-                            console.print(Markdown(sanitized), end="")
-                        except Exception:
-                            console.print(sanitized, end="")
-                    else:
-                        # Raw text: in liên tục
-                        console.print(sanitized, end="")
-
-                    # detect function_call attribute on part (SDK-specific)
+            if chunk.candidates:
+                for part in chunk.candidates[0].content.parts:
+                    if part.text:
+                        full_text += part.text
                     if hasattr(part, 'function_call') and part.function_call:
                         function_calls.append(part.function_call)
-
-                except Exception as ex_part:
-                    logger.exception("Lỗi xử lý part trong stream: %s", ex_part)
-
-        # cuối cùng in 1 dòng xuống để ngắt dòng nếu cần
-        try:
-            console.print()
-        except Exception:
-            pass
-
     except Exception as e:
-        console.print(f"\n[bold red]Lỗi khi xử lý stream: {e}[/bold red]")
-        logger.exception("process_response_stream error: %s", e)
-
+        print(f"\n[bold red]Lỗi khi xử lý stream: {e}[/bold red]")
     return full_text, function_calls
+
+def display_response(console: Console, text: str, output_format: str, persona: str = None):
+    """
+    Hiển thị phản hồi cuối cùng với logic định dạng thông minh.
+    """
+    display_text = text
+
+    if persona == 'python_dev' and text.strip() and not text.strip().startswith('```'):
+        display_text = f"```python\n{text.strip()}\n```"
+
+    if output_format == 'rich':
+        console.print(Markdown(display_text))
+    else:
+        console.print(display_text)
 
 
 def print_formatted_history(console: Console, history: list):
@@ -201,35 +89,24 @@ def serialize_history(history):
     """Chuyển đổi history thành format JSON có thể serialize một cách an toàn."""
     serializable = []
     for content in history:
-        content_dict = {"role": getattr(content, "role", None) or content.role if hasattr(content, "role") else content.get("role", "unknown"), "parts": []}
-        # support both attr-based and dict-based content
-        parts_iter = getattr(content, "parts", None) or content.get("parts", []) if isinstance(content, dict) else getattr(content, "parts", [])
-        for part in parts_iter:
+        content_dict = {"role": content.role, "parts": []}
+        for part in content.parts:
             part_dict = {}
-            # part may be object or dict
             if hasattr(part, "text") and part.text is not None:
                 part_dict["text"] = part.text
-            elif isinstance(part, dict) and part.get("text") is not None:
-                part_dict["text"] = part.get("text")
             elif hasattr(part, "function_call") and part.function_call is not None:
-                try:
-                    part_dict["function_call"] = {
-                        "name": part.function_call.name,
-                        "args": dict(part.function_call.args) if part.function_call.args else {},
-                    }
-                except Exception:
-                    part_dict["function_call"] = {"name": getattr(part.function_call, "name", None)}
+                part_dict["function_call"] = {
+                    "name": part.function_call.name,
+                    "args": dict(part.function_call.args),
+                }
             elif (
                 hasattr(part, "function_response")
                 and part.function_response is not None
             ):
-                try:
-                    part_dict["function_response"] = {
-                        "name": part.function_response.name,
-                        "response": dict(part.function_response.response) if getattr(part.function_response, "response", None) else {},
-                    }
-                except Exception:
-                    part_dict["function_response"] = {"name": getattr(part.function_response, "name", None)}
+                part_dict["function_response"] = {
+                    "name": part.function_response.name,
+                    "response": dict(part.function_response.response),
+                }
             if part_dict:
                 content_dict["parts"].append(part_dict)
         if content_dict["parts"]:
@@ -237,114 +114,103 @@ def serialize_history(history):
     return serializable
 
 
-def handle_conversation_turn(chat_session, prompt_parts, console: Console, model_name: str = None, output_format: str = "rich"):
+def handle_conversation_turn(chat_session, prompt_parts, console: Console, model_name: str = None, args: argparse.Namespace = None):
     """
-    Xử lý một lượt hội thoại với auto-retry khi hết quota.
-    Tự động chuyển sang API key backup nếu key hiện tại hết quota.
+    Xử lý một lượt hội thoại với logic hiển thị và định dạng lại output.
     """
-    from google.api_core.exceptions import ResourceExhausted
-
-    max_retries = len(api._api_keys) if getattr(api, "_api_keys", None) else 1
-
+    max_retries = len(api._api_keys) if api._api_keys else 1
+    
     for attempt in range(max_retries):
         try:
             final_text_response = ""
             total_tokens = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
-
-            # gọi API - ở api.send_message bạn đã implement stream / non-stream return
+            
             response_stream = api.send_message(chat_session, prompt_parts)
-            text_chunk, function_calls = process_response_stream(response_stream, console, output_format)
-
-            # Lấy token usage (gốc có dùng response_stream.resolve() -> nếu SDK có)
+            text_chunk, function_calls = accumulate_response_stream(response_stream)
+            
             try:
-                # ✅ PATCH: bọc try/except để tránh exception nếu response_stream không hỗ trợ resolve()
-                if hasattr(response_stream, "resolve"):
-                    try:
-                        response_stream.resolve()
-                    except Exception:
-                        pass
-                usage = {}
-                try:
-                    usage = api.get_token_usage(response_stream)
-                except Exception:
-                    usage = {}
+                response_stream.resolve()
+                usage = api.get_token_usage(response_stream)
                 if usage:
                     for key in total_tokens:
-                        if key in usage and usage[key]:
-                            total_tokens[key] += usage[key]
+                        total_tokens[key] += usage[key]
             except Exception:
-                # ignore usage errors
                 pass
-
+            
             if text_chunk:
-                final_text_response += text_chunk + "\n"
+                final_text_response += text_chunk
 
-            # Xử lý function calls (giữ nguyên logic gốc)
             while function_calls:
                 tool_responses = []
                 for func_call in function_calls:
                     tool_name = func_call.name
                     tool_args = dict(func_call.args) if func_call.args else {}
-
+                    
                     console.print(f"[yellow]⚙ Lệnh gọi tool: [bold]{tool_name}[/bold]({tool_args})[/yellow]")
 
                     if tool_name in api.AVAILABLE_TOOLS:
                         try:
                             tool_function = api.AVAILABLE_TOOLS[tool_name]
                             result = tool_function(**tool_args)
-
                             if tool_name in ['refactor_code', 'document_code']:
                                 console.print(f"\n[bold cyan]📄 Kết quả từ {tool_name}:[/bold cyan]")
                                 console.print(Markdown(result))
                                 console.print()
-
                         except Exception as e:
                             result = f"Error executing tool '{tool_name}': {str(e)}"
                     else:
                         result = f"Error: Tool '{tool_name}' not found."
-
+                    
+                    # --- BẮT ĐẦU SỬA LỖI ---
+                    # Thay thế cú pháp genai.protos.Part() cũ bằng cú pháp dictionary mới
                     tool_responses.append({
-                        "function_response": {"name": tool_name, "response": {"result": result}}
+                        "function_response": {
+                            "name": tool_name,
+                            "response": {"result": result}
+                        }
                     })
+                    # --- KẾT THÚC SỬA LỖI ---
 
-                # Gửi lại tool responses như conversation-turn cho model
                 response_stream = api.send_message(chat_session, tool_responses)
-                text_chunk, function_calls = process_response_stream(response_stream, console, output_format)
-
+                text_chunk, function_calls = accumulate_response_stream(response_stream)
+                
                 try:
-                    if hasattr(response_stream, "resolve"):
-                        try:
-                            response_stream.resolve()
-                        except Exception:
-                            pass
-                    usage = {}
-                    try:
-                        usage = api.get_token_usage(response_stream)
-                    except Exception:
-                        usage = {}
+                    response_stream.resolve()
+                    usage = api.get_token_usage(response_stream)
                     if usage:
                         for key in total_tokens:
-                            if key in usage and usage[key]:
-                                total_tokens[key] += usage[key]
+                            total_tokens[key] += usage[key]
                 except Exception:
                     pass
-
+                
                 if text_chunk:
-                    final_text_response += text_chunk + "\n"
+                    final_text_response += "\n" + text_chunk
 
-            # Lấy token limit
-            token_limit = 0
-            if model_name:
-                token_limit = api.get_model_token_limit(model_name)
+            persona = args.persona if args else None
+            output_format = args.format if args else 'rich'
+            display_response(console, final_text_response, output_format, persona)
 
+            token_limit = api.get_model_token_limit(model_name)
+            
             return final_text_response.strip(), total_tokens, token_limit
-
+            
         except ResourceExhausted as e:
-            # Hết quota, thử chuyển sang key khác
             if attempt < max_retries - 1:
                 success, msg = api.switch_to_next_api_key()
                 if success:
                     console.print(f"\n[yellow]⚠ Hết quota! Đã chuyển sang API {msg}. Đang thử lại...[/yellow]")
+                    # Lấy system instruction từ chat session hiện tại để khởi tạo lại
+                    system_instruction = chat_session.model.system_instruction
+                    if system_instruction and hasattr(system_instruction, 'parts') and system_instruction.parts:
+                         system_instruction_text = system_instruction.parts.text
+                    else:
+                         system_instruction_text = None
+
+                    chat_session = api.start_chat_session(
+                        model_name, 
+                        system_instruction_text, 
+                        chat_session.history
+                    )
                     continue
                 else:
                     console.print(f"\n[bold red]❌ {msg}. Không thể tiếp tục.[/bold red]")
@@ -353,16 +219,12 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                 console.print(f"\n[bold red]❌ Đã thử hết {max_retries} API key(s). Tất cả đều hết quota.[/bold red]")
                 raise
         except Exception as e:
-            # Lỗi khác, không retry
-            logger.exception("Lỗi khi xử lý conversation turn: %s", e)
             raise
-
-    # Không bao giờ đến đây, nhưng để an toàn
+    
     return "", {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}, 0
 
 
 def model_selection_wizard(console: Console, config: dict):
-    # This function remains unchanged from your original implementation
     console.print("[bold green]Đang lấy danh sách các model khả dụng...[/bold green]")
     try:
         models = api.get_available_models()
@@ -418,44 +280,38 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
     """Chạy chế độ chat tương tác với logic lưu trữ thông minh."""
     console.print("[bold green]Đã vào chế độ trò chuyện. Gõ 'exit' hoặc 'quit' để thoát.[/bold green]")
     initial_save_path = None
-    if getattr(args, "topic", None):
+    if args.topic:
         initial_save_path = os.path.join(HISTORY_DIR, f"chat_{utils.sanitize_filename(args.topic)}.json")
-    elif getattr(args, "load", None):
+    elif args.load:
         initial_save_path = args.load
-
+        
     try:
         while True:
             prompt = console.input("\n[bold cyan]You:[/bold cyan] ")
-            if prompt.lower().strip() in ["exit", "quit", "q"]:
-                break
-            if not prompt.strip():
-                continue
+            if prompt.lower().strip() in ["exit", "quit", "q"]: break
+            if not prompt.strip(): continue
 
             console.print("\n[bold magenta]AI:[/bold magenta]")
             try:
                 response_text, token_usage, token_limit = handle_conversation_turn(
-                    chat_session, [prompt], console,
+                    chat_session, [prompt], console, 
                     model_name=config.get("default_model"),
-                    output_format=getattr(args, "format", None) or config.get("default_format", "rich")
+                    args=args
                 )
-
-                # Hiển thị token usage (nếu có)
-                if token_usage and isinstance(token_usage, dict) and token_usage.get('total_tokens', 0) > 0:
-                    if token_limit and token_limit > 0:
+                
+                if token_usage and token_usage['total_tokens'] > 0:
+                    if token_limit > 0:
                         console.print(f"[dim]📊 {token_usage['total_tokens']:,} / {token_limit:,} tokens[/dim]")
                     else:
                         console.print(f"[dim]📊 {token_usage['total_tokens']:,} tokens[/dim]")
             except Exception as e:
                 console.print(f"[bold red]Lỗi: {e}[/bold red]")
-                logger.exception("Lỗi khi chạy vòng chat: %s", e)
                 continue
-
-            # preserve original behavior: execute suggested commands if any
+            
             utils.execute_suggested_commands(response_text, console)
     except (KeyboardInterrupt, EOFError):
         console.print("\n[yellow]Đã dừng bởi người dùng.[/yellow]")
     finally:
-        # Saving logic (giữ nguyên luồng gốc, chỉ thêm kiểm tra an toàn)
         if not os.path.exists(HISTORY_DIR):
             os.makedirs(HISTORY_DIR)
         save_path = initial_save_path
@@ -466,20 +322,25 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                     data = json.load(f)
                     title = data.get("title", os.path.basename(save_path))
             except (FileNotFoundError, json.JSONDecodeError):
-                title = getattr(args, "topic", None) or os.path.splitext(os.path.basename(save_path))[0].replace("chat_", "")
+                title = args.topic or os.path.splitext(os.path.basename(save_path))[
+                    0
+                ].replace("chat_", "")
         else:
             try:
-                # THÊM XỬ LÝ EXCEPTION KHI TRUY CẬP HISTORY
                 try:
-                    history_len = len(getattr(chat_session, "history", []))
+                    history_len = len(chat_session.history)
                 except Exception:
-                    # Nếu không thể truy cập history (vì stream chưa hoàn thành), bỏ qua việc lưu
                     console.print("\n[yellow]Không thể lưu lịch sử do phiên chat chưa hoàn tất.[/yellow]")
                     return
-
+                
                 initial_len = 0
-                if getattr(args, "load", None) or getattr(args, "topic", None):
-                    initial_len = len(load_config().get("history", [])) or 0
+                if args.load or args.topic:
+                    try:
+                        with open(args.load or initial_save_path, 'r', encoding='utf-8') as f:
+                            initial_data = json.load(f)
+                            initial_len = len(initial_data.get("history", []))
+                    except (FileNotFoundError, TypeError, json.JSONDecodeError):
+                        initial_len = 0
 
                 if history_len <= initial_len:
                     console.print("\n[yellow]Không có nội dung mới để lưu.[/yellow]")
@@ -494,41 +355,16 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                     console.print(
                         "[cyan]AI đang nghĩ tên cho cuộc trò chuyện...[/cyan]"
                     )
-                    # get_response_text_from_history expects a history entry object; guard
-                    first_history_item = None
-                    try:
-                        first_history_item = getattr(chat_session, "history", [None])[0]
-                    except Exception:
-                        first_history_item = None
-
-                    first_user_prompt = ""
-                    if first_history_item:
-                        try:
-                            first_user_prompt = get_response_text_from_history(first_history_item)
-                        except Exception:
-                            try:
-                                # fallback if history stored as dicts
-                                hist = getattr(chat_session, "history", []) or []
-                                if hist and isinstance(hist[0], dict):
-                                    first_user_prompt = "".join(p.get("text","") for p in hist[0].get("parts", []))
-                            except Exception:
-                                first_user_prompt = ""
-
+                    first_user_prompt = get_response_text_from_history(
+                        chat_session.history
+                    )
                     prompt_for_title = f"Dựa trên câu hỏi đầu tiên này: '{first_user_prompt}', hãy tạo một tiêu đề ngắn gọn (dưới 7 từ) cho cuộc trò chuyện. Chỉ trả về tiêu đề."
 
-                    try:
-                        # ✅ PATCH: dùng lazy import genai để tránh import native libs sớm
-                        genai = _get_genai()
-                        title_chat = genai.GenerativeModel(
-                            config.get("default_model")
-                        ).start_chat()
-                        response = title_chat.send_message(prompt_for_title)
-                        # response có thể là object hoặc dict
-                        title = getattr(response, "text", None) or (response.get("text") if isinstance(response, dict) else str(response))
-                        title = str(title).strip().replace('"', "")
-                    except Exception as e:
-                        logger.exception("Không thể tạo tiêu đề tự động: %s", e)
-                        title = "untitled_chat_" + datetime.now().strftime("%Y%m%d_%H%M%S")
+                    title_chat = genai.GenerativeModel(
+                        config.get("default_model")
+                    ).start_chat()
+                    response = title_chat.send_message(prompt_for_title)
+                    title = response.text.strip().replace('"', "")
 
                 filename = f"chat_{utils.sanitize_filename(title)}.json"
                 save_path = os.path.join(HISTORY_DIR, filename)
@@ -540,7 +376,7 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                 history_data = {
                     "title": title,
                     "last_modified": datetime.now().isoformat(),
-                    "history": serialize_history(getattr(chat_session, "history", [])),
+                    "history": serialize_history(chat_session.history),
                 }
                 with open(save_path, "w", encoding="utf-8") as f:
                     json.dump(history_data, f, indent=2, ensure_ascii=False)
@@ -550,9 +386,7 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
             except Exception as e:
                 console.print(f"\n[yellow]Không thể lưu lịch sử: {e}[/yellow]")
 
-
 def show_history_browser(console: Console):
-    # This function remains unchanged (kept original behavior)
     console.print(
         f"[bold green]Đang quét các file lịch sử trong `{HISTORY_DIR}/`...[/bold green]"
     )
@@ -590,12 +424,9 @@ def show_history_browser(console: Console):
     table.add_column("Chủ Đề Trò Chuyện", style="magenta")
     table.add_column("Lần Cập Nhật Cuối", style="green")
     for i, meta in enumerate(history_metadata):
-        try:
-            mod_time_str = datetime.fromisoformat(meta["last_modified"]).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-        except Exception:
-            mod_time_str = meta["last_modified"]
+        mod_time_str = datetime.fromisoformat(meta["last_modified"]).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
         table.add_row(str(i + 1), meta["title"], mod_time_str)
     console.print(table)
     try:
@@ -622,7 +453,6 @@ def show_history_browser(console: Console):
 def handle_history_summary(
     console: Console, config: dict, history: list, cli_help_text: str
 ):
-    # This function remains unchanged in behavior
     console.print(
         "\n[bold yellow]Đang yêu cầu AI tóm tắt cuộc trò chuyện...[/bold yellow]"
     )
@@ -655,8 +485,8 @@ def handle_history_summary(
             cli_help_text=cli_help_text,
         )
 
-        console.print("\n[bold green]📝 Tóm Tắt Cuộc Trò Chuyện:[/bold green] ", end="")
-        handle_conversation_turn(chat_session, [prompt], console)
+        console.print("\n[bold green]📝 Tóm Tắt Cuộc Trò Chuyện:[/bold green] ")
+        handle_conversation_turn(chat_session, [prompt], console, args=argparse.Namespace(persona=None, format='rich'))
 
     except Exception as e:
         console.print(f"[bold red]Lỗi khi tóm tắt lịch sử: {e}[/bold red]")

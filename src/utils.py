@@ -13,42 +13,11 @@ ALLOWED_EXTENSIONS = {'.py', '.js', '.ts', '.html', '.css', '.scss', '.json', '.
                       '.rb', '.sql', '.sh', '.txt'}
 IGNORED_DIRS = {'.venv', '.git', '__pycache__', 'node_modules', 'bin', 'obj'}
 
-# --- BẮT ĐẦU THÊM MỚI ---
-def print_streamed_markdown(console: Console, text: str, speed: float = 0.005):
-    """
-    In một chuỗi Markdown ra console với hiệu ứng streaming từng từ.
-    Hàm này giúp cải thiện trải nghiệm người dùng mà không cần thay đổi logic API.
-    """
-    if not text.strip():
-        return
-
-    buffer = ""
-    # In từng ký tự để có hiệu ứng mượt mà
-    for char in text:
-        buffer += char
-        # Chỉ render lại Markdown sau khi gặp khoảng trắng hoặc dòng mới để tối ưu hiệu suất
-        if char.isspace() or char in ['.', ',', '!', '?', ':', ';']:
-            console.print(Markdown(buffer), end="")
-            # Dùng \r để đưa con trỏ về đầu dòng, chuẩn bị ghi đè
-            # Tuy nhiên, Rich xử lý việc này tốt hơn, ta chỉ cần in chồng lên
-            # Vì vậy, chúng ta sẽ xóa dòng hiện tại trước khi in buffer mới
-            # Rich không có cách trực tiếp để "xóa và vẽ lại", 
-            # việc in liên tục với end="" là cách tiếp cận tốt nhất của nó.
-            # Trong trường hợp này, chúng ta sẽ để Rich tự quản lý việc render.
-            # Với Rich, cách tốt nhất là build buffer và in ra một lần.
-            # Để tạo hiệu ứng, chúng ta sẽ dùng cách thủ công hơn.
-            
-    # In phần còn lại của buffer
-    console.print(Markdown(buffer))
-
-    # Cách tiếp cận thứ hai, đơn giản hơn và hiệu quả với Rich
-    # rendered_text = ""
-    # for word in text.split(' '):
-    #     rendered_text += word + " "
-    #     console.clear() # Có thể gây nhấp nháy
-    #     console.print(Markdown(rendered_text))
-    #     time.sleep(speed)
-# --- KẾT THÚC THÊM MỚI ---
+# --- BẮT ĐẦU THAY ĐỔI ---
+# Gỡ bỏ hàm print_streamed_markdown không được sử dụng để làm sạch code.
+# Logic xử lý stream đã được chuyển vào process_response_stream trong handlers.py
+# một cách hiệu quả hơn.
+# --- KẾT THÚC THAY ĐỔI ---
 
 
 def get_directory_context() -> str:
