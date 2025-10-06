@@ -1,51 +1,96 @@
 import os
 import sys
+
+# --- Giảm log native ---
+os.environ.setdefault('GRPC_VERBOSITY', 'ERROR')
+os.environ.setdefault('GLOG_minloglevel', '3')
+os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
+os.environ.setdefault('GRPC_ENABLE_FORK_SUPPORT', '0')
+os.environ.setdefault('GRPC_POLL_STRATEGY', 'poll')
+os.environ.setdefault('ABSL_CPP_MIN_LOG_LEVEL', '3')
+
+# --- Kiểm soát việc tắt stderr ---
+SILENCE_NATIVE_STDERR = os.getenv("SILENCE_NATIVE_STDERR", "1") == "1"
+
+# ✅ Chỉ redirect stderr thực sự nếu chạy trên Linux/macOS
+if SILENCE_NATIVE_STDERR and os.name != "nt":  # tránh Windows
+    try:
+        devnull_fd = os.open(os.devnull, os.O_WRONLY)
+        os.dup2(devnull_fd, 2)
+        sys.stderr = open(os.devnull, 'w')
+    except Exception:
+        pass
+else:
+    # Trên Windows chỉ tắt log ở Python-level
+    import logging
+    logging.getLogger('google').setLevel(logging.ERROR)
+    logging.getLogger('grpc').setLevel(logging.ERROR)
+    logging.getLogger('absl').setLevel(logging.ERROR)
+    try:
+        import absl.logging as _absl_logging
+        _absl_logging.set_verbosity(_absl_logging.ERROR)
+    except Exception:
+        pass
+
+# --- Import phần còn lại ---
 import json
 import traceback
+import logging as _logging
+import subprocess
 from dotenv import load_dotenv
 from rich.console import Console
 from rich.markdown import Markdown
 from PIL import Image
 from google.api_core.exceptions import ResourceExhausted
 
-# --- Import các module đã được tách ra ---
 import api
 import utils
 import cli
 import handlers
 from config import load_config
 
+_logging.basicConfig(level=_logging.ERROR)
+
 def main(provided_args=None):
     """Hàm chính điều phối toàn bộ ứng dụng."""
-    # --- Giai đoạn 1: Thiết lập ban đầu ---
-    os.environ['GRPC_ENABLE_FORK_SUPPORT'] = '0'
-    os.environ['GRPC_POLL_STRATEGY'] = 'poll'
     load_dotenv()
     console = Console()
     config = load_config()
 
-    # --- Giai đoạn 2: Phân tích cú pháp lệnh ---
     parser = cli.create_parser()
     args = provided_args or parser.parse_args()
 
     cli_help_text = parser.format_help()
     args.cli_help_text = cli_help_text 
 
-    # Ghi đè config mặc định từ các tham số người dùng
     args.model = args.model or config.get("default_model")
-    args.format = args.format or config.get("default_format")
+    args.format = args.format or config.get("default_format", "rich")
     args.persona = args.persona or None
 
-    # --- Giai đoạn 3: Cấu hình API và điều phối ---
-    api_key = os.getenv("GOOGLE_API_KEY")
-    if not api_key:
+    # Khởi tạo API keys từ .env
+    keys = api.initialize_api_keys()
+    if not keys:
         console.print("[bold red]Lỗi: Vui lòng thiết lập GOOGLE_API_KEY trong file .env[/bold red]")
         return
     
+    if len(keys) > 1:
+        console.print(f"[dim]🔑 Đã tải {len(keys)} API key(s)[/dim]")
+    
     try:
-        api.configure_api(api_key)
+        # Configure với key đầu tiên
+        api.configure_api(keys[0])
 
-        # Điều phối các lệnh không cần prompt
+        # Xử lý các lệnh quản lý
+        if args.add_instruct:
+            handlers.add_instruction(console, config, args.add_instruct)
+            return
+        if args.list_instructs:
+            handlers.list_instructions(console, config)
+            return
+        if args.rm_instruct is not None:
+            handlers.remove_instruction(console, config, args.rm_instruct)
+            return
+        
         if args.list_models:
             api.list_models(console)
             return
@@ -55,20 +100,25 @@ def main(provided_args=None):
         if args.history and not provided_args:
             selected_file = handlers.show_history_browser(console)
             if selected_file:
-                new_args = parser.parse_args([]) 
-                new_args.load = selected_file
-                new_args.chat = True
-                new_args.print_log = True
-                main(new_args)
-            return
-        if args.document or args.refactor:
-            handlers.handle_code_helper(args, config, console, cli_help_text)
+                prompt_text = "Bạn muốn [c]hat tiếp, [s]ummarize (tóm tắt), hay [q]uit? "
+                action = input(prompt_text).lower()
+                if action == 'c':
+                    new_args = parser.parse_args(['--load', selected_file, '--chat', '--print-log'])
+                    main(new_args)
+                elif action == 's':
+                    new_args = parser.parse_args(['--load', selected_file, '--summarize'])
+                    main(new_args)
             return
 
-        # --- Giai đoạn 4: Chuẩn bị và thực thi ---
-        system_instruction = args.system_instruction or \
-                             (config.get("personas", {}).get(args.persona) if args.persona else None)
+        # Xử lý system instruction
+        saved_instructions = config.get("saved_instructions", [])
+        system_instruction_str = "\n".join(f"- {item}" for item in saved_instructions)
+        if args.system_instruction:
+            system_instruction_str = args.system_instruction
+        elif args.persona and config.get("personas", {}).get(args.persona):
+            system_instruction_str = config["personas"][args.persona]
         
+        # Tải lịch sử nếu có
         history = None
         load_path = None
         if args.topic:
@@ -87,97 +137,121 @@ def main(provided_args=None):
                 console.print(f"[bold red]Lỗi khi tải lịch sử: {e}[/bold red]")
                 return
         
+        # Xử lý summarize
+        if history and args.summarize:
+            handlers.handle_history_summary(console, config, history, cli_help_text)
+            return
+        
+        # In lịch sử nếu có
         if history and args.print_log:
             handlers.print_formatted_history(console, history)
-            if not args.chat:
-                return
+            if not args.chat and not args.topic:
+                 return
 
-        models_to_try = [args.model] if args.model and args.model != config.get("default_model") else config.get("model_fallback_order", [config.get("default_model")])
+        # Khởi tạo chat session
+        chat_session = api.start_chat_session(args.model, system_instruction_str, history, cli_help_text=cli_help_text)
         
-        if args.chat:
-            chat_session = api.start_chat_session(models_to_try[0], system_instruction, history, cli_help_text=cli_help_text)
+        # Chế độ chat
+        if args.chat or args.topic:
             handlers.run_chat_mode(chat_session, console, config, args)
             return
         
-        # Logic xử lý prompt đơn lẻ
+        # Đọc input từ pipe
         piped_input = None
         if not sys.stdin.isatty():
              piped_input = sys.stdin.read().strip()
         
-        if not args.prompt and not piped_input and not args.image and not args.git_commit:
-             console.print("[bold red]Lỗi: Cần cung cấp prompt hoặc một hành động như --git-commit.[/bold red]")
+        # Kiểm tra có prompt hay không
+        if not any([args.prompt, piped_input, args.image, args.git_commit, args.document, args.refactor]):
+             console.print("[bold red]Lỗi: Cần cung cấp prompt hoặc một hành động cụ thể.[/bold red]")
              parser.print_help()
              return
 
+        # Xây dựng prompt
         prompt_parts = []
         user_question = args.prompt or ""
+
+        # Xử lý ảnh
         if args.image:
-            try:
-                img = Image.open(args.image)
-                prompt_parts.append(img)
-            except (FileNotFoundError, IsADirectoryError):
-                console.print(f"[bold red]Lỗi: Không tìm thấy file ảnh '{args.image}'[/bold red]")
-                return
-            except Exception as e:
-                console.print(f"[bold red]Lỗi khi mở ảnh: {e}[/bold red]")
-                return
+            for image_path in args.image:
+                try:
+                    img = Image.open(image_path)
+                    prompt_parts.append(img)
+                except (FileNotFoundError, IsADirectoryError):
+                    console.print(f"[bold red]Lỗi: Không tìm thấy file ảnh '{image_path}'[/bold red]")
+                    return
+                except Exception as e:
+                    console.print(f"[bold red]Lỗi khi mở ảnh '{image_path}': {e}[/bold red]")
+                    return
+            console.print(f"[green]Đã tải lên {len(args.image)} ảnh.[/green]")
         
+        # Xây dựng prompt text
         prompt_text = ""
         if piped_input:
             prompt_text += f"Dựa vào nội dung được cung cấp sau đây:\n{piped_input}\n\n{user_question}"
         else:
             prompt_text += user_question
 
+        # Đọc context thư mục
         if args.read_dir:
             console.print("[yellow]Đang đọc ngữ cảnh thư mục...[/yellow]")
             context = utils.get_directory_context()
             prompt_text = f"Dựa vào ngữ cảnh các file dưới đây:\n{context}\n\n{prompt_text}"
         
+        # Xử lý các chức năng đặc biệt
+        if args.git_commit:
+             diff = subprocess.check_output(["git", "diff", "--staged"], text=True, encoding='utf-8')
+             prompt_text = (
+                 "Hãy viết một commit message theo chuẩn Conventional Commits dựa trên git diff sau:\n"
+                 f"```diff\n{diff}\n```"
+             )
+        elif args.document:
+            console.print(f"🤖 [bold cyan]Đang yêu cầu AI viết tài liệu cho file '{args.document}'...[/bold cyan]")
+            prompt_text = f"Sử dụng tool 'document_code' để viết tài liệu cho file '{args.document}'."
+        elif args.refactor:
+            console.print(f"🤖 [bold cyan]Đang yêu cầu AI tái cấu trúc file '{args.refactor}'...[/bold cyan]")
+            prompt_text = f"Sử dụng tool 'refactor_code' để tái cấu trúc code trong file '{args.refactor}'."
+
         if prompt_text:
             prompt_parts.append(prompt_text)
 
-        response = None
-        for model in models_to_try:
-            try:
-                if len(models_to_try) > 1:
-                    console.print(f"[dim]Đang thử với model: {model}...[/dim]")
-                chat_session = api.start_chat_session(model, system_instruction, history, cli_help_text=cli_help_text)
-                if args.git_commit:
-                    handlers.handle_git_commit(chat_session, console, args.format)
-                    return
-                with console.status(f"[bold green]AI (model: {model}) đang suy nghĩ...[/bold green]"):
-                    response = api.send_message(chat_session, prompt_parts)
-                break
-            except ResourceExhausted:
-                console.print(f"[bold yellow]⚠️ Model '{model}' đã hết hạn ngạch.[/bold yellow]")
-                if model == models_to_try[-1]:
-                    console.print("[bold red]❌ Đã thử hết các model dự phòng nhưng đều thất bại.[/bold red]")
-                else:
-                    console.print("[cyan]Đang tự động chuyển sang model tiếp theo...[/cyan]")
-                continue
-            except Exception as e:
-                console.print(f"[bold red]Đã xảy ra lỗi không mong muốn với model {model}: {e}[/bold red]")
-                break
+        # Hiển thị model đang sử dụng
+        model_display_name = args.model.replace("models/", "")
+        console.print(f"\n[dim]🤖 Model: {model_display_name}[/dim]")
+        console.print("\n💡 [bold green]Phản hồi:[/bold green]")
         
-        if response:
-            console.print("\n💡 [bold green]Phản hồi:[/bold green]")
-            response_text = handlers.get_response_text(response)
+        try:
+            final_response_text, token_usage, token_limit = handlers.handle_conversation_turn(
+                chat_session, prompt_parts, console, model_name=args.model, output_format=args.format
+            )
+            
+            # Hiển thị token usage
+            if token_usage and token_usage['total_tokens'] > 0:
+                if token_limit > 0:
+                    remaining = token_limit - token_usage['total_tokens']
+                    console.print(f"\n[dim] Token: {token_usage['prompt_tokens']} (prompt) + "
+                                 f"{token_usage['completion_tokens']} (completion) = "
+                                 f"{token_usage['total_tokens']:,} / {token_limit:,} "
+                                 f"({remaining:,} còn lại)[/dim]")
+                else:
+                    console.print(f"\n[dim]📊 Token: {token_usage['prompt_tokens']} (prompt) + "
+                                 f"{token_usage['completion_tokens']} (completion) = "
+                                 f"{token_usage['total_tokens']:,} (total)[/dim]")
+            
+            # Lưu output nếu có
             if args.output:
-                try:
-                    with open(args.output, 'w', encoding='utf-8') as f:
-                        f.write(response_text)
-                    console.print(f"[bold green]✅ Đã lưu kết quả vào file: [cyan]{args.output}[/cyan][/bold green]")
-                except Exception as e:
-                     console.print(f"\n[bold red]Lỗi khi lưu file: {e}[/bold red]")
-            elif args.format == 'rich':
-                console.print(Markdown(response_text))
-            else:
-                console.print(response_text)
-                
-            if response.usage_metadata:
-                tokens = response.usage_metadata.total_token_count
-                console.print(f"\n[dim]Token usage: {tokens}[/dim]")
-            utils.execute_suggested_commands(response_text, console)
+                with open(args.output, 'w', encoding='utf-8') as f:
+                    f.write(final_response_text)
+                console.print(f"\n[bold green]✅ Đã lưu kết quả vào file: [cyan]{args.output}[/cyan][/bold green]")
+            
+            # Thực thi lệnh được đề xuất
+            utils.execute_suggested_commands(final_response_text, console)
+
+        except ResourceExhausted:
+            console.print("[bold red]❌ Tất cả API keys đều đã hết quota.[/bold red]")
+        except Exception as e:
+            console.print(f"[bold red]\nĐã xảy ra lỗi không mong muốn: {e}[/bold red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
 
     except KeyboardInterrupt:
         console.print("\n[yellow]Đã dừng bởi người dùng.[/yellow]")

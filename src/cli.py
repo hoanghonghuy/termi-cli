@@ -1,3 +1,5 @@
+# src/cli.py
+
 import argparse
 
 def create_parser():
@@ -17,12 +19,20 @@ def create_parser():
     parser.add_argument("-m", "--model", type=str, help="Chọn model cho phiên này (ghi đè tạm thời).")
     parser.add_argument("-p", "--persona", type=str, help="Chọn một persona (tính cách) đã định nghĩa trong config.")
     parser.add_argument("-si", "--system-instruction", type=str, help="Ghi đè chỉ dẫn hệ thống cho phiên này.")
+    
+    # --- Quản lý Chỉ Dẫn Tùy Chỉnh ---
+    instruct_group = parser.add_argument_group('Quản lý Chỉ Dẫn Tùy Chỉnh (Custom Instructions)')
+    instruct_group.add_argument("--add-instruct", metavar="INSTRUCTION", type=str, help="Thêm một chỉ dẫn lâu dài cho AI.")
+    instruct_group.add_argument("--list-instructs", action="store_true", help="Liệt kê tất cả các chỉ dẫn đã lưu.")
+    instruct_group.add_argument("--rm-instruct", metavar="INDEX", type=int, help="Xóa một chỉ dẫn đã lưu theo số thứ tự.")
 
     # --- Quản lý Lịch sử ---
     parser.add_argument("--history", action="store_true", help="Hiển thị trình duyệt lịch sử chat.")
     parser.add_argument("--load", type=str, help="Tải lịch sử chat từ một file cụ thể.")
     parser.add_argument("--topic", type=str, help="Tải hoặc tạo một cuộc trò chuyện theo chủ đề.")
     parser.add_argument("--print-log", action="store_true", help="In nội dung của file lịch sử đã tải ra màn hình.")
+    parser.add_argument("--summarize", action="store_true", help="Tóm tắt lịch sử chat đã tải (dùng chung với --load hoặc --topic).")
+
 
     # --- Tích hợp & Tiện ích Code ---
     parser.add_argument("--git-commit", action="store_true", help="Tự động tạo commit message cho các thay đổi đã staged.")
@@ -30,7 +40,7 @@ def create_parser():
     parser.add_argument("--refactor", type=str, metavar="FILE_PATH", help="Đề xuất các phương án tái cấu trúc code trong file.")
     
     # --- Input & Output ---
-    parser.add_argument("-i", "--image", type=str, help="Đường dẫn tới file ảnh để phân tích.")
+    parser.add_argument("-i", "--image", nargs='+', type=str, help="Đường dẫn tới một hoặc nhiều file ảnh để phân tích.")
     parser.add_argument("-rd", "--read-dir", action="store_true", help="Đọc ngữ cảnh của toàn bộ thư mục hiện tại.")
     parser.add_argument("-f", "--format", type=str, choices=['rich', 'raw'], help="Định dạng output (mặc định: rich).")
     parser.add_argument("-o", "--output", type=str, metavar="FILE_PATH", help="Lưu kết quả đầu ra vào một file thay vì in ra console.")

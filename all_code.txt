@@ -1,0 +1,1770 @@
+Code bundle from project: cli-ai-gemini
+================================================================================
+
+DIRECTORY STRUCTURE
+--------------------------------------------------------------------------------
+cli-ai-gemini/
+├── .gitignore
+├── all_code.txt
+├── create_db.py
+└── requirements.txt
+├── chat_logs/
+├── src/
+│   ├── __init__.py
+│   ├── api.py
+│   ├── auth.py
+│   ├── check_models.py
+│   ├── cli.py
+│   ├── config.py
+│   ├── handlers.py
+│   ├── main.py
+│   ├── prompts.py
+│   └── utils.py
+│   ├── tools/
+│   │   ├── __init__.py
+│   │   ├── calendar_tool.py
+│   │   ├── code_tool.py
+│   │   ├── database.py
+│   │   ├── email_tool.py
+│   │   ├── instruction_tool.py
+│   │   └── web_search.py
+
+================================================================================
+
+--- FILE: .gitignore ---
+
+# Môi trường ảo
+.venv/
+venv/
+env/
+
+# File biến môi trường
+.env
+
+# Các file xác thực nhạy cảm
+credentials.json
+token.json
+
+# Cache của Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# File database
+*.db
+*.sqlite3
+
+# Lịch sử trò chuyện
+*.json
+
+# Thư mục của các IDE
+.idea/
+.vscode/
+
+# Thư mục build và distribution
+/dist/
+/build/
+*.egg-info/
+
+================================================================================
+
+--- FILE: create_db.py ---
+
+# create_db.py
+import sqlite3
+
+conn = sqlite3.connect('mydatabase.db')
+cursor = conn.cursor()
+
+# Create tables
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT NOT NULL UNIQUE
+)''')
+
+cursor.execute('''
+CREATE TABLE IF NOT EXISTS products (
+    id INTEGER PRIMARY KEY,
+    name TEXT NOT NULL,
+    price REAL NOT NULL
+)''')
+
+# Insert sample data (if not exists)
+try:
+    cursor.execute("INSERT INTO users (id, name, email) VALUES (1, 'Hoang Hong Huy', 'huy.hh@example.com')")
+    cursor.execute("INSERT INTO users (id, name, email) VALUES (2, 'Nguyen Van A', 'a.nv@example.com')")
+    cursor.execute("INSERT INTO products (id, name, price) VALUES (101, 'Laptop Pro', 1200.50)")
+    cursor.execute("INSERT INTO products (id, name, price) VALUES (102, 'AI Mouse', 75.00)")
+except sqlite3.IntegrityError:
+    print("Data already exists.")
+
+conn.commit()
+conn.close()
+print("Database 'mydatabase.db' created and populated successfully.")
+
+================================================================================
+
+--- FILE: requirements.txt ---
+
+# requirements.txt
+
+# Core Google AI Library (a recent, stable version)
+google-generativeai==0.5.4
+
+# Google API client for Calendar/Email
+google-api-python-client==2.125.0
+google-auth-httplib2==0.2.0
+google-auth-oauthlib==1.2.0
+
+# Helper libraries
+python-dotenv==1.0.1
+Pillow==11.3.0
+ddgs==9.0.0
+rich==13.7.1
+SQLAlchemy==2.0.43
+unidecode=1.4.0
+
+================================================================================
+
+--- FILE: src/__init__.py ---
+
+
+
+================================================================================
+
+--- FILE: src/api.py ---
+
+# src/api.py
+"""
+Mô-đun này chịu trách nhiệm quản lý tương tác với API của Google Gemini.
+"""
+import os
+import google.generativeai as genai
+from rich.table import Table
+from rich.console import Console
+
+_current_api_key_index = 0
+_api_keys = []
+
+# Import các tool và prompt builder
+from tools import web_search, database, calendar_tool, email_tool
+from tools import instruction_tool
+from tools import code_tool # Thêm tool mới
+from prompts import build_enhanced_instruction
+
+# Ánh xạ tên tool tới hàm thực thi
+AVAILABLE_TOOLS = {
+    web_search.search_web.__name__: web_search.search_web,
+    database.get_db_schema.__name__: database.get_db_schema,
+    database.run_sql_query.__name__: database.run_sql_query,
+    calendar_tool.list_events.__name__: calendar_tool.list_events,
+    email_tool.search_emails.__name__: email_tool.search_emails,
+    instruction_tool.save_instruction.__name__: instruction_tool.save_instruction,
+    code_tool.refactor_code.__name__: code_tool.refactor_code,
+    code_tool.document_code.__name__: code_tool.document_code,
+}
+
+def configure_api(api_key: str):
+    """Cấu hình API key."""
+    genai.configure(api_key=api_key)
+
+def get_available_models() -> list[str]:
+    """Lấy danh sách các model name hỗ trợ generateContent."""
+    models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+    return models
+
+def list_models(console: Console):
+    """Liệt kê các model có sẵn."""
+    table = Table(title="✨ Danh sách Models Gemini Khả Dụng ✨")
+    table.add_column("Model Name", style="cyan", no_wrap=True)
+    table.add_column("Description", style="magenta")
+    console.print("Đang lấy danh sách models...")
+    for m in genai.list_models():
+        if 'generateContent' in m.supported_generation_methods:
+            table.add_row(m.name, m.description)
+    console.print(table)
+
+def start_chat_session(model_name: str, system_instruction: str = None, history: list = None, cli_help_text: str = ""):
+    """Khởi tạo chat session."""
+    enhanced_instruction = build_enhanced_instruction(cli_help_text)
+    if system_instruction:
+        enhanced_instruction = f"**PRIMARY DIRECTIVE (User-defined rules):**\n{system_instruction}\n\n---\n\n{enhanced_instruction}"
+
+    tools_config = list(AVAILABLE_TOOLS.values())
+    
+    model = genai.GenerativeModel(
+        model_name, 
+        system_instruction=enhanced_instruction,
+        tools=tools_config
+    )
+    chat = model.start_chat(history=history or [])
+    return chat
+
+def send_message(chat_session: genai.ChatSession, prompt_parts: list):
+    """
+    Gửi message và trả về một generator để xử lý streaming.
+    """
+    response = chat_session.send_message(prompt_parts, stream=True)
+    return response
+
+def get_token_usage(response):
+    """Trích xuất thông tin token usage từ response."""
+    try:
+        if hasattr(response, 'usage_metadata'):
+            usage = response.usage_metadata
+            return {
+                'prompt_tokens': getattr(usage, 'prompt_token_count', 0),
+                'completion_tokens': getattr(usage, 'candidates_token_count', 0),
+                'total_tokens': getattr(usage, 'total_token_count', 0)
+            }
+    except Exception:
+        pass
+    return None
+
+
+def get_model_token_limit(model_name: str) -> int:
+    """Lấy token limit của model."""
+    try:
+        model_info = genai.get_model(model_name)
+        if hasattr(model_info, 'input_token_limit'):
+            return model_info.input_token_limit
+        # Fallback cho các model không có thông tin
+        if 'flash' in model_name.lower():
+            return 1000000  # Flash models thường có 1M tokens
+        elif 'pro' in model_name.lower():
+            return 2000000  # Pro models thường có 2M tokens
+    except Exception:
+        pass
+    return 0
+
+
+def initialize_api_keys():
+    """Khởi tạo danh sách API keys từ .env"""
+    global _api_keys
+    _api_keys = []
+    
+    primary = os.getenv("GOOGLE_API_KEY")
+    if primary:
+        _api_keys.append(primary)
+    
+    # Thêm các key backup
+    i = 2
+    while True:
+        key_name = f"GOOGLE_API_KEY_{i}ND" if i == 2 else f"GOOGLE_API_KEY_{i}RD" if i == 3 else f"GOOGLE_API_KEY_{i}TH"
+        backup_key = os.getenv(key_name)
+        if backup_key:
+            _api_keys.append(backup_key)
+            i += 1
+        else:
+            break
+    
+    return _api_keys
+
+def get_current_api_key():
+    """Lấy API key hiện tại"""
+    global _current_api_key_index, _api_keys
+    if _current_api_key_index < len(_api_keys):
+        return _api_keys[_current_api_key_index]
+    return None
+
+def switch_to_next_api_key():
+    """Chuyển sang API key tiếp theo"""
+    global _current_api_key_index, _api_keys
+    _current_api_key_index += 1
+    if _current_api_key_index < len(_api_keys):
+        new_key = _api_keys[_current_api_key_index]
+        configure_api(new_key)
+        return True, f"Key #{_current_api_key_index + 1}"
+    return False, "Hết API keys"
+
+================================================================================
+
+--- FILE: src/auth.py ---
+
+import os.path
+from google.auth.transport.requests import Request
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+
+# Phạm vi quyền mà ta yêu cầu
+SCOPES = [
+    "https://www.googleapis.com/auth/calendar",
+    "https://www.googleapis.com/auth/gmail.modify"
+]
+
+def get_credentials():
+    """Lấy credentials hợp lệ để tương tác với Google APIs."""
+    creds = None
+    if os.path.exists("token.json"):
+        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    
+    if not creds or not creds.valid:
+        if creds and creds.expired and creds.refresh_token:
+            creds.refresh(Request())
+        else:
+            flow = InstalledAppFlow.from_client_secrets_file(
+                "credentials.json", SCOPES
+            )
+            creds = flow.run_local_server(port=0)
+        
+        with open("token.json", "w") as token:
+            token.write(creds.to_json())
+    return creds
+
+================================================================================
+
+--- FILE: src/check_models.py ---
+
+import os
+import google.generativeai as genai
+from dotenv import load_dotenv
+
+# Tải API key
+load_dotenv()
+api_key = os.getenv("GOOGLE_API_KEY")
+
+if not api_key:
+    print("Không tìm thấy GOOGLE_API_KEY trong file .env")
+else:
+    try:
+        # Cấu hình
+        genai.configure(api_key=api_key)
+
+        print("Đang lấy danh sách các model khả dụng cho key của bạn...")
+        print("-" * 50)
+
+        # Lặp qua tất cả model và chỉ in ra những model hỗ trợ 'generateContent'
+        found_model = False
+        for m in genai.list_models():
+            if 'generateContent' in m.supported_generation_methods:
+                print(f"-> {m.name}")
+                found_model = True
+
+        if not found_model:
+            print("Không tìm thấy model nào hỗ trợ generateContent cho API key này.")
+
+        print("-" * 50)
+
+    except Exception as e:
+        print(f"Đã xảy ra lỗi khi kết nối tới API: {e}")
+
+================================================================================
+
+--- FILE: src/cli.py ---
+
+# src/cli.py
+
+import argparse
+
+def create_parser():
+    """Tạo và cấu hình parser cho các tham số dòng lệnh."""
+    parser = argparse.ArgumentParser(
+        description="AI Agent CLI mạnh mẽ với Gemini.",
+        formatter_class=argparse.RawTextHelpFormatter
+    )
+    
+    # --- Các đối số chính ---
+    parser.add_argument("prompt", nargs='?', default=None, help="Câu lệnh hỏi AI.")
+    parser.add_argument("--chat", action="store_true", help="Bật chế độ chat tương tác.")
+    
+    # --- Cấu hình Model & AI ---
+    parser.add_argument("--list-models", action="store_true", help="Liệt kê các model khả dụng.")
+    parser.add_argument("--set-model", action="store_true", help="Chạy giao diện để chọn model mặc định.")
+    parser.add_argument("-m", "--model", type=str, help="Chọn model cho phiên này (ghi đè tạm thời).")
+    parser.add_argument("-p", "--persona", type=str, help="Chọn một persona (tính cách) đã định nghĩa trong config.")
+    parser.add_argument("-si", "--system-instruction", type=str, help="Ghi đè chỉ dẫn hệ thống cho phiên này.")
+    
+    # --- Quản lý Chỉ Dẫn Tùy Chỉnh ---
+    instruct_group = parser.add_argument_group('Quản lý Chỉ Dẫn Tùy Chỉnh (Custom Instructions)')
+    instruct_group.add_argument("--add-instruct", metavar="INSTRUCTION", type=str, help="Thêm một chỉ dẫn lâu dài cho AI.")
+    instruct_group.add_argument("--list-instructs", action="store_true", help="Liệt kê tất cả các chỉ dẫn đã lưu.")
+    instruct_group.add_argument("--rm-instruct", metavar="INDEX", type=int, help="Xóa một chỉ dẫn đã lưu theo số thứ tự.")
+
+    # --- Quản lý Lịch sử ---
+    parser.add_argument("--history", action="store_true", help="Hiển thị trình duyệt lịch sử chat.")
+    parser.add_argument("--load", type=str, help="Tải lịch sử chat từ một file cụ thể.")
+    parser.add_argument("--topic", type=str, help="Tải hoặc tạo một cuộc trò chuyện theo chủ đề.")
+    parser.add_argument("--print-log", action="store_true", help="In nội dung của file lịch sử đã tải ra màn hình.")
+    parser.add_argument("--summarize", action="store_true", help="Tóm tắt lịch sử chat đã tải (dùng chung với --load hoặc --topic).")
+
+
+    # --- Tích hợp & Tiện ích Code ---
+    parser.add_argument("--git-commit", action="store_true", help="Tự động tạo commit message cho các thay đổi đã staged.")
+    parser.add_argument("--document", type=str, metavar="FILE_PATH", help="Tự động viết tài liệu (docstrings) cho code trong file.")
+    parser.add_argument("--refactor", type=str, metavar="FILE_PATH", help="Đề xuất các phương án tái cấu trúc code trong file.")
+    
+    # --- Input & Output ---
+    parser.add_argument("-i", "--image", nargs='+', type=str, help="Đường dẫn tới một hoặc nhiều file ảnh để phân tích.")
+    parser.add_argument("-rd", "--read-dir", action="store_true", help="Đọc ngữ cảnh của toàn bộ thư mục hiện tại.")
+    parser.add_argument("-f", "--format", type=str, choices=['rich', 'raw'], help="Định dạng output (mặc định: rich).")
+    parser.add_argument("-o", "--output", type=str, metavar="FILE_PATH", help="Lưu kết quả đầu ra vào một file thay vì in ra console.")
+
+    return parser
+
+================================================================================
+
+--- FILE: src/config.py ---
+
+import json
+from pathlib import Path
+
+CONFIG_PATH = Path("config.json")
+
+def load_config() -> dict:
+    """Tải cấu hình từ file config.json."""
+    if CONFIG_PATH.exists():
+        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                # Nếu file config bị lỗi, trả về cấu hình mặc định
+                pass
+                
+    # Cấu hình mặc định nếu file không tồn tại hoặc bị lỗi
+    return {
+        "default_model": "models/gemini-flash-latest",
+        "default_format": "rich",
+        "default_system_instruction": "You are a helpful AI assistant.",
+        "model_fallback_order": [
+            "models/gemini-flash-latest",
+            "models/gemini-pro-latest"
+        ],
+        "personas": {},
+        "database": {}
+    }
+
+def save_config(config: dict):
+    """Lưu cấu hình vào file config.json."""
+    with open(CONFIG_PATH, 'w', encoding='utf-8') as f:
+        json.dump(config, f, indent=2, ensure_ascii=False)
+
+================================================================================
+
+--- FILE: src/handlers.py ---
+
+# src/handlers.py
+import os
+import sys
+import json
+import glob
+import re
+import argparse
+from datetime import datetime
+import subprocess
+
+from rich.console import Console
+from rich.markdown import Markdown
+from rich.table import Table
+import google.generativeai as genai
+from google.api_core.exceptions import ResourceExhausted
+
+import api
+import utils
+from config import save_config, load_config
+
+# --- CONSTANTS ---
+HISTORY_DIR = "chat_logs"
+
+
+# --- HELPER FUNCTIONS ---
+def get_response_text_from_history(history_entry):
+    """Trích xuất text từ một entry trong đối tượng history."""
+    try:
+        text_parts = [
+            part.text
+            for part in history_entry.parts
+            if hasattr(part, "text") and part.text
+        ]
+        return "".join(text_parts)
+    except Exception:
+        return ""
+
+
+def process_response_stream(response_stream, console: Console, output_format: str = "rich"):
+    """
+    Xử lý luồng phản hồi từ AI với format tùy chọn.
+    """
+    full_text = ""
+    function_calls = []
+    
+    try:
+        for chunk in response_stream:
+            if chunk.candidates:
+                for part in chunk.candidates[0].content.parts:
+                    if part.text:
+                        full_text += part.text
+                        
+                        # Render theo format
+                        if output_format == "rich":
+                            # Render markdown real-time
+                            console.print(Markdown(part.text), end="")
+                        else:
+                            # Raw text
+                            console.print(part.text, end="")
+                            
+                    if hasattr(part, 'function_call') and part.function_call:
+                        function_calls.append(part.function_call)
+        
+        console.print()
+        
+    except Exception as e:
+        console.print(f"\n[bold red]Lỗi khi xử lý stream: {e}[/bold red]")
+    
+    return full_text, function_calls
+
+
+def print_formatted_history(console: Console, history: list):
+    """In lịch sử trò chuyện đã tải ra màn hình."""
+    console.print("\n--- [bold yellow]LỊCH SỬ TRÒ CHUYỆN[/bold yellow] ---")
+    for item in history:
+        role = item.get("role", "unknown")
+        text_parts = [p.get("text", "") for p in item.get("parts", []) if p.get("text")]
+        text = "".join(text_parts).strip()
+        if not text:
+            continue
+        if role == "user":
+            console.print(f"\n[bold cyan]You:[/bold cyan] {text}")
+        elif role == "model":
+            console.print(f"\n[bold magenta]AI:[/bold magenta]")
+            console.print(Markdown(text))
+    console.print("\n--- [bold yellow]KẾT THÚC LỊCH SỬ[/bold yellow] ---\n")
+
+
+def serialize_history(history):
+    """Chuyển đổi history thành format JSON có thể serialize một cách an toàn."""
+    serializable = []
+    for content in history:
+        content_dict = {"role": content.role, "parts": []}
+        for part in content.parts:
+            part_dict = {}
+            if hasattr(part, "text") and part.text is not None:
+                part_dict["text"] = part.text
+            elif hasattr(part, "function_call") and part.function_call is not None:
+                part_dict["function_call"] = {
+                    "name": part.function_call.name,
+                    "args": dict(part.function_call.args),
+                }
+            elif (
+                hasattr(part, "function_response")
+                and part.function_response is not None
+            ):
+                part_dict["function_response"] = {
+                    "name": part.function_response.name,
+                    "response": dict(part.function_response.response),
+                }
+            if part_dict:
+                content_dict["parts"].append(part_dict)
+        if content_dict["parts"]:
+            serializable.append(content_dict)
+    return serializable
+
+
+def handle_conversation_turn(chat_session, prompt_parts, console: Console, model_name: str = None, output_format: str = "rich"):
+    """
+    Xử lý một lượt hội thoại với auto-retry khi hết quota.
+    Tự động chuyển sang API key backup nếu key hiện tại hết quota.
+    """
+    from google.api_core.exceptions import ResourceExhausted
+    
+    max_retries = len(api._api_keys) if api._api_keys else 1
+    
+    for attempt in range(max_retries):
+        try:
+            final_text_response = ""
+            total_tokens = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
+            
+            response_stream = api.send_message(chat_session, prompt_parts)
+            text_chunk, function_calls = process_response_stream(response_stream, console, output_format)
+            
+            # Lấy token usage
+            try:
+                response_stream.resolve()
+                usage = api.get_token_usage(response_stream)
+                if usage:
+                    for key in total_tokens:
+                        total_tokens[key] += usage[key]
+            except Exception:
+                pass
+            
+            if text_chunk:
+                final_text_response += text_chunk + "\n"
+
+            # Xử lý function calls
+            while function_calls:
+                tool_responses = []
+                for func_call in function_calls:
+                    tool_name = func_call.name
+                    tool_args = dict(func_call.args) if func_call.args else {}
+                    
+                    console.print(f"[yellow]⚙ Lệnh gọi tool: [bold]{tool_name}[/bold]({tool_args})[/yellow]")
+
+                    if tool_name in api.AVAILABLE_TOOLS:
+                        try:
+                            tool_function = api.AVAILABLE_TOOLS[tool_name]
+                            result = tool_function(**tool_args)
+                            
+                            if tool_name in ['refactor_code', 'document_code']:
+                                console.print(f"\n[bold cyan]📄 Kết quả từ {tool_name}:[/bold cyan]")
+                                console.print(Markdown(result))
+                                console.print()
+                                
+                        except Exception as e:
+                            result = f"Error executing tool '{tool_name}': {str(e)}"
+                    else:
+                        result = f"Error: Tool '{tool_name}' not found."
+                    
+                    tool_responses.append({
+                        "function_response": {"name": tool_name, "response": {"result": result}}
+                    })
+
+                response_stream = api.send_message(chat_session, tool_responses)
+                text_chunk, function_calls = process_response_stream(response_stream, console, output_format)
+                
+                try:
+                    response_stream.resolve()
+                    usage = api.get_token_usage(response_stream)
+                    if usage:
+                        for key in total_tokens:
+                            total_tokens[key] += usage[key]
+                except Exception:
+                    pass
+                
+                if text_chunk:
+                    final_text_response += text_chunk + "\n"
+            
+            # Lấy token limit
+            token_limit = 0
+            if model_name:
+                token_limit = api.get_model_token_limit(model_name)
+            
+            return final_text_response.strip(), total_tokens, token_limit
+            
+        except ResourceExhausted as e:
+            # Hết quota, thử chuyển sang key khác
+            if attempt < max_retries - 1:
+                success, msg = api.switch_to_next_api_key()
+                if success:
+                    console.print(f"\n[yellow]⚠ Hết quota! Đã chuyển sang API {msg}. Đang thử lại...[/yellow]")
+                    continue
+                else:
+                    console.print(f"\n[bold red]❌ {msg}. Không thể tiếp tục.[/bold red]")
+                    raise
+            else:
+                console.print(f"\n[bold red]❌ Đã thử hết {max_retries} API key(s). Tất cả đều hết quota.[/bold red]")
+                raise
+        except Exception as e:
+            # Lỗi khác, không retry
+            raise
+    
+    # Không bao giờ đến đây, nhưng để an toàn
+    return "", {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}, 0
+
+
+def model_selection_wizard(console: Console, config: dict):
+    # This function remains unchanged
+    console.print("[bold green]Đang lấy danh sách các model khả dụng...[/bold green]")
+    try:
+        models = api.get_available_models()
+        if not models:
+            console.print("[bold red]Không tìm thấy model nào khả dụng.[/bold red]")
+            return
+    except Exception as e:
+        console.print(f"[bold red]Lỗi khi lấy danh sách model: {e}[/bold red]")
+        return
+
+    table = Table(title="Chọn một model để làm mặc định")
+    table.add_column("#", style="cyan")
+    table.add_column("Model Name", style="magenta")
+    stable_models = sorted([m for m in models if "preview" not in m and "exp" not in m])
+    preview_models = sorted([m for m in models if "preview" in m or "exp" in m])
+    sorted_models = stable_models + preview_models
+    for i, model_name in enumerate(sorted_models):
+        table.add_row(str(i + 1), model_name)
+    console.print(table)
+
+    while True:
+        try:
+            choice_str = console.input("Nhập số thứ tự của model bạn muốn chọn: ")
+            choice = int(choice_str) - 1
+            if 0 <= choice < len(sorted_models):
+                selected_model = sorted_models[choice]
+                config["default_model"] = selected_model
+                fallback_list = [selected_model]
+                for m in stable_models:
+                    if m != selected_model and m not in fallback_list:
+                        fallback_list.append(m)
+                config["model_fallback_order"] = fallback_list
+                save_config(config)
+                console.print(
+                    f"\n[bold green]✅ Đã đặt model mặc định là: [cyan]{selected_model}[/cyan][/bold green]"
+                )
+                console.print(
+                    f"[yellow]Thứ tự model dự phòng đã được cập nhật.[/yellow]"
+                )
+                break
+            else:
+                console.print(
+                    "[bold red]Lựa chọn không hợp lệ, vui lòng thử lại.[/bold red]"
+                )
+        except ValueError:
+            console.print("[bold red]Vui lòng nhập một con số.[/bold red]")
+        except (KeyboardInterrupt, EOFError):
+            console.print("\n[yellow]Đã hủy lựa chọn.[/yellow]")
+            break
+
+
+def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.Namespace):
+    """Chạy chế độ chat tương tác với logic lưu trữ thông minh."""
+    console.print("[bold green]Đã vào chế độ trò chuyện. Gõ 'exit' hoặc 'quit' để thoát.[/bold green]")
+    initial_save_path = None
+    if args.topic:
+        initial_save_path = os.path.join(HISTORY_DIR, f"chat_{utils.sanitize_filename(args.topic)}.json")
+    elif args.load:
+        initial_save_path = args.load
+        
+    try:
+        while True:
+            prompt = console.input("\n[bold cyan]You:[/bold cyan] ")
+            if prompt.lower().strip() in ["exit", "quit", "q"]: break
+            if not prompt.strip(): continue
+
+            console.print("\n[bold magenta]AI:[/bold magenta]")
+            try:
+                response_text, token_usage, token_limit = handle_conversation_turn(
+                    chat_session, [prompt], console, 
+                    model_name=config.get("default_model"),
+                    output_format=config.get("default_format", "rich")
+                )
+                
+                # Hiển thị token usage
+                if token_usage and token_usage['total_tokens'] > 0:
+                    if token_limit > 0:
+                        console.print(f"[dim]📊 {token_usage['total_tokens']:,} / {token_limit:,} tokens[/dim]")
+                    else:
+                        console.print(f"[dim]📊 {token_usage['total_tokens']:,} tokens[/dim]")
+            except Exception as e:
+                console.print(f"[bold red]Lỗi: {e}[/bold red]")
+                continue
+            
+            utils.execute_suggested_commands(response_text, console)
+    except (KeyboardInterrupt, EOFError):
+        console.print("\n[yellow]Đã dừng bởi người dùng.[/yellow]")
+    finally:
+        # Saving logic
+        if not os.path.exists(HISTORY_DIR):
+            os.makedirs(HISTORY_DIR)
+        save_path = initial_save_path
+        title = ""
+        if save_path:
+            try:
+                with open(save_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    title = data.get("title", os.path.basename(save_path))
+            except (FileNotFoundError, json.JSONDecodeError):
+                title = args.topic or os.path.splitext(os.path.basename(save_path))[
+                    0
+                ].replace("chat_", "")
+        else:
+            try:
+                # THÊM XỬ LÝ EXCEPTION KHI TRUY CẬP HISTORY
+                try:
+                    history_len = len(chat_session.history)
+                except Exception:
+                    # Nếu không thể truy cập history (vì stream chưa hoàn thành), bỏ qua việc lưu
+                    console.print("\n[yellow]Không thể lưu lịch sử do phiên chat chưa hoàn tất.[/yellow]")
+                    return
+                
+                initial_len = 0
+                if args.load or args.topic:
+                    initial_len = len(load_config().get("history", []))
+
+                if history_len <= initial_len:
+                    console.print("\n[yellow]Không có nội dung mới để lưu.[/yellow]")
+                    return
+
+                user_title = console.input(
+                    "\n[bold yellow]Lưu cuộc trò chuyện với tên (bỏ trống để AI tự đặt tên): [/bold yellow]"
+                ).strip()
+                if user_title:
+                    title = user_title
+                else:
+                    console.print(
+                        "[cyan]AI đang nghĩ tên cho cuộc trò chuyện...[/cyan]"
+                    )
+                    first_user_prompt = get_response_text_from_history(
+                        chat_session.history[0]
+                    )
+                    prompt_for_title = f"Dựa trên câu hỏi đầu tiên này: '{first_user_prompt}', hãy tạo một tiêu đề ngắn gọn (dưới 7 từ) cho cuộc trò chuyện. Chỉ trả về tiêu đề."
+
+                    title_chat = genai.GenerativeModel(
+                        config.get("default_model")
+                    ).start_chat()
+                    response = title_chat.send_message(prompt_for_title)
+                    title = response.text.strip().replace('"', "")
+
+                filename = f"chat_{utils.sanitize_filename(title)}.json"
+                save_path = os.path.join(HISTORY_DIR, filename)
+            except (KeyboardInterrupt, EOFError):
+                console.print("\n[yellow]Không lưu cuộc trò chuyện.[/yellow]")
+                return
+        if save_path and title:
+            try:
+                history_data = {
+                    "title": title,
+                    "last_modified": datetime.now().isoformat(),
+                    "history": serialize_history(chat_session.history),
+                }
+                with open(save_path, "w", encoding="utf-8") as f:
+                    json.dump(history_data, f, indent=2, ensure_ascii=False)
+                console.print(
+                    f"\n[bold yellow]Lịch sử trò chuyện đã được lưu vào '{save_path}'.[/bold yellow]"
+                )
+            except Exception as e:
+                console.print(f"\n[yellow]Không thể lưu lịch sử: {e}[/yellow]")
+
+def show_history_browser(console: Console):
+    # This function remains unchanged
+    console.print(
+        f"[bold green]Đang quét các file lịch sử trong `{HISTORY_DIR}/`...[/bold green]"
+    )
+    if not os.path.exists(HISTORY_DIR):
+        console.print(
+            f"[yellow]Thư mục '{HISTORY_DIR}' không tồn tại. Chưa có lịch sử nào được lưu.[/yellow]"
+        )
+        return None
+    history_files = glob.glob(os.path.join(HISTORY_DIR, "*.json"))
+    if not history_files:
+        console.print("[yellow]Không tìm thấy file lịch sử nào.[/yellow]")
+        return None
+    history_metadata = []
+    for file_path in history_files:
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                title = data.get("title", os.path.basename(file_path))
+                last_modified_iso = data.get(
+                    "last_modified",
+                    datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat(),
+                )
+                history_metadata.append(
+                    {
+                        "title": title,
+                        "last_modified": last_modified_iso,
+                        "file_path": file_path,
+                    }
+                )
+        except Exception:
+            continue
+    history_metadata.sort(key=lambda x: x["last_modified"], reverse=True)
+    table = Table(title="📚 Lịch sử Trò chuyện")
+    table.add_column("#", style="cyan")
+    table.add_column("Chủ Đề Trò Chuyện", style="magenta")
+    table.add_column("Lần Cập Nhật Cuối", style="green")
+    for i, meta in enumerate(history_metadata):
+        mod_time_str = datetime.fromisoformat(meta["last_modified"]).strftime(
+            "%Y-%m-%d %H:%M:%S"
+        )
+        table.add_row(str(i + 1), meta["title"], mod_time_str)
+    console.print(table)
+    try:
+        choice_str = console.input(
+            "Nhập số để tiếp tục cuộc trò chuyện (nhấn Enter để thoát): "
+        )
+        if not choice_str:
+            console.print("[yellow]Đã thoát trình duyệt lịch sử.[/yellow]")
+            return None
+        choice = int(choice_str)
+        if 1 <= choice <= len(history_metadata):
+            selected_file = history_metadata[choice - 1]["file_path"]
+            console.print(
+                f"\n[green]Đang tải lại cuộc trò chuyện: '{history_metadata[choice - 1]['title']}'...[/green]"
+            )
+            return selected_file
+        else:
+            console.print("[yellow]Lựa chọn không hợp lệ.[/yellow]")
+    except (ValueError, KeyboardInterrupt, EOFError):
+        console.print("\n[yellow]Đã thoát trình duyệt lịch sử.[/yellow]")
+    return None
+
+
+def handle_history_summary(
+    console: Console, config: dict, history: list, cli_help_text: str
+):
+    # This function remains unchanged
+    console.print(
+        "\n[bold yellow]Đang yêu cầu AI tóm tắt cuộc trò chuyện...[/bold yellow]"
+    )
+    history_text = ""
+    for item in history:
+        role = "User" if item.get("role") == "user" else "AI"
+        text = "".join(
+            p.get("text", "") for p in item.get("parts", []) if p.get("text")
+        ).strip()
+        if text:
+            history_text += f"{role}: {text}\n"
+
+    if not history_text:
+        console.print("[yellow]Lịch sử trống, không có gì để tóm tắt.[/yellow]")
+        return
+
+    prompt = (
+        "Dưới đây là một cuộc trò chuyện đã được lưu. "
+        "Hãy đọc và tóm tắt lại nội dung chính của nó trong vài gạch đầu dòng ngắn gọn.\n\n"
+        f"--- NỘI DUNG CUỘC TRÒ CHUYỆN ---\n{history_text}---\n\n"
+        "Tóm tắt của bạn:"
+    )
+
+    try:
+        model_name = config.get("default_model")
+        chat_session = api.start_chat_session(
+            model_name,
+            "You are a helpful summarizer.",
+            history=[],
+            cli_help_text=cli_help_text,
+        )
+
+        console.print("\n[bold green]📝 Tóm Tắt Cuộc Trò Chuyện:[/bold green] ", end="")
+        handle_conversation_turn(chat_session, [prompt], console)
+
+    except Exception as e:
+        console.print(f"[bold red]Lỗi khi tóm tắt lịch sử: {e}[/bold red]")
+
+
+# --- Handlers for custom instructions ---
+def add_instruction(console: Console, config: dict, instruction: str):
+    """Thêm một chỉ dẫn mới vào config."""
+    if "saved_instructions" not in config:
+        config["saved_instructions"] = []
+    if instruction not in config["saved_instructions"]:
+        config["saved_instructions"].append(instruction)
+        save_config(config)
+        console.print(
+            f"[bold green]✅ Đã thêm chỉ dẫn mới:[/bold green] '{instruction}'"
+        )
+    else:
+        console.print(f"[yellow]Chỉ dẫn đã tồn tại.[/yellow]")
+
+
+def list_instructions(console: Console, config: dict):
+    """Liệt kê các chỉ dẫn đã lưu."""
+    instructions = config.get("saved_instructions", [])
+    if not instructions:
+        console.print("[yellow]Không có chỉ dẫn tùy chỉnh nào được lưu.[/yellow]")
+        return
+
+    table = Table(title="📝 Các Chỉ Dẫn Tùy Chỉnh Đã Lưu")
+    table.add_column("#", style="cyan")
+    table.add_column("Chỉ Dẫn", style="magenta")
+    for i, instruction in enumerate(instructions):
+        table.add_row(str(i + 1), instruction)
+    console.print(table)
+
+
+def remove_instruction(console: Console, config: dict, index: int):
+    """Xóa một chỉ dẫn theo index (bắt đầu từ 1)."""
+    instructions = config.get("saved_instructions", [])
+    if not 1 <= index <= len(instructions):
+        console.print(
+            f"[bold red]Lỗi: Index không hợp lệ. Vui lòng chọn số từ 1 đến {len(instructions)}.[/bold red]"
+        )
+        return
+
+    removed_instruction = instructions.pop(index - 1)
+    config["saved_instructions"] = instructions
+    save_config(config)
+    console.print(
+        f"[bold green]✅ Đã xóa chỉ dẫn:[/bold green] '{removed_instruction}'"
+    )
+
+
+================================================================================
+
+--- FILE: src/main.py ---
+
+# src/main.py
+import os
+import sys
+
+# ===== CHẶN WARNING TRIỆT ĐỂ =====
+os.environ['GRPC_VERBOSITY'] = 'ERROR'
+os.environ['GLOG_minloglevel'] = '3'
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+os.environ['GRPC_ENABLE_FORK_SUPPORT'] = '0'
+os.environ['GRPC_POLL_STRATEGY'] = 'poll'
+
+# Redirect stderr sang devnull HOÀN TOÀN
+import io
+_original_stderr = sys.stderr
+sys.stderr = open(os.devnull, 'w')
+
+import json
+import traceback
+import logging
+import subprocess
+from dotenv import load_dotenv
+from rich.console import Console
+from rich.markdown import Markdown
+from PIL import Image
+from google.api_core.exceptions import ResourceExhausted
+
+import api
+import utils
+import cli
+import handlers
+from config import load_config
+
+# Tắt các log không cần thiết
+logging.basicConfig(level=logging.ERROR)
+
+def main(provided_args=None):
+    """Hàm chính điều phối toàn bộ ứng dụng."""
+    load_dotenv()
+    console = Console()
+    config = load_config()
+
+    parser = cli.create_parser()
+    args = provided_args or parser.parse_args()
+
+    cli_help_text = parser.format_help()
+    args.cli_help_text = cli_help_text 
+
+    args.model = args.model or config.get("default_model")
+    args.format = args.format or config.get("default_format", "rich")
+    args.persona = args.persona or None
+
+    # Khởi tạo API keys từ .env
+    keys = api.initialize_api_keys()
+    if not keys:
+        console.print("[bold red]Lỗi: Vui lòng thiết lập GOOGLE_API_KEY trong file .env[/bold red]")
+        return
+    
+    if len(keys) > 1:
+        console.print(f"[dim]🔑 Đã tải {len(keys)} API key(s)[/dim]")
+    
+    try:
+        # Configure với key đầu tiên
+        api.configure_api(keys[0])
+
+        # Xử lý các lệnh quản lý
+        if args.add_instruct:
+            handlers.add_instruction(console, config, args.add_instruct)
+            return
+        if args.list_instructs:
+            handlers.list_instructions(console, config)
+            return
+        if args.rm_instruct is not None:
+            handlers.remove_instruction(console, config, args.rm_instruct)
+            return
+        
+        if args.list_models:
+            api.list_models(console)
+            return
+        if args.set_model:
+            handlers.model_selection_wizard(console, config)
+            return
+        if args.history and not provided_args:
+            selected_file = handlers.show_history_browser(console)
+            if selected_file:
+                prompt_text = "Bạn muốn [c]hat tiếp, [s]ummarize (tóm tắt), hay [q]uit? "
+                action = input(prompt_text).lower()
+                if action == 'c':
+                    new_args = parser.parse_args(['--load', selected_file, '--chat', '--print-log'])
+                    main(new_args)
+                elif action == 's':
+                    new_args = parser.parse_args(['--load', selected_file, '--summarize'])
+                    main(new_args)
+            return
+
+        # Xử lý system instruction
+        saved_instructions = config.get("saved_instructions", [])
+        system_instruction_str = "\n".join(f"- {item}" for item in saved_instructions)
+        if args.system_instruction:
+            system_instruction_str = args.system_instruction
+        elif args.persona and config.get("personas", {}).get(args.persona):
+            system_instruction_str = config["personas"][args.persona]
+        
+        # Tải lịch sử nếu có
+        history = None
+        load_path = None
+        if args.topic:
+            sanitized_topic = utils.sanitize_filename(args.topic)
+            load_path = os.path.join(handlers.HISTORY_DIR, f"chat_{sanitized_topic}.json")
+        elif args.load:
+            load_path = args.load
+
+        if load_path and os.path.exists(load_path):
+            try:
+                with open(load_path, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    history = data.get("history", []) if isinstance(data, dict) else data
+                console.print(f"[green]Đã tải lịch sử từ '{load_path}'.[/green]")
+            except Exception as e:
+                console.print(f"[bold red]Lỗi khi tải lịch sử: {e}[/bold red]")
+                return
+        
+        # Xử lý summarize
+        if history and args.summarize:
+            handlers.handle_history_summary(console, config, history, cli_help_text)
+            return
+        
+        # In lịch sử nếu có
+        if history and args.print_log:
+            handlers.print_formatted_history(console, history)
+            if not args.chat and not args.topic:
+                 return
+
+        # Khởi tạo chat session
+        chat_session = api.start_chat_session(args.model, system_instruction_str, history, cli_help_text=cli_help_text)
+        
+        # Chế độ chat
+        if args.chat or args.topic:
+            handlers.run_chat_mode(chat_session, console, config, args)
+            return
+        
+        # Đọc input từ pipe
+        piped_input = None
+        if not sys.stdin.isatty():
+             piped_input = sys.stdin.read().strip()
+        
+        # Kiểm tra có prompt hay không
+        if not any([args.prompt, piped_input, args.image, args.git_commit, args.document, args.refactor]):
+             console.print("[bold red]Lỗi: Cần cung cấp prompt hoặc một hành động cụ thể.[/bold red]")
+             parser.print_help()
+             return
+
+        # Xây dựng prompt
+        prompt_parts = []
+        user_question = args.prompt or ""
+
+        # Xử lý ảnh
+        if args.image:
+            for image_path in args.image:
+                try:
+                    img = Image.open(image_path)
+                    prompt_parts.append(img)
+                except (FileNotFoundError, IsADirectoryError):
+                    console.print(f"[bold red]Lỗi: Không tìm thấy file ảnh '{image_path}'[/bold red]")
+                    return
+                except Exception as e:
+                    console.print(f"[bold red]Lỗi khi mở ảnh '{image_path}': {e}[/bold red]")
+                    return
+            console.print(f"[green]Đã tải lên {len(args.image)} ảnh.[/green]")
+        
+        # Xây dựng prompt text
+        prompt_text = ""
+        if piped_input:
+            prompt_text += f"Dựa vào nội dung được cung cấp sau đây:\n{piped_input}\n\n{user_question}"
+        else:
+            prompt_text += user_question
+
+        # Đọc context thư mục
+        if args.read_dir:
+            console.print("[yellow]Đang đọc ngữ cảnh thư mục...[/yellow]")
+            context = utils.get_directory_context()
+            prompt_text = f"Dựa vào ngữ cảnh các file dưới đây:\n{context}\n\n{prompt_text}"
+        
+        # Xử lý các chức năng đặc biệt
+        if args.git_commit:
+             diff = subprocess.check_output(["git", "diff", "--staged"], text=True, encoding='utf-8')
+             prompt_text = (
+                 "Hãy viết một commit message theo chuẩn Conventional Commits dựa trên git diff sau:\n"
+                 f"```diff\n{diff}\n```"
+             )
+        elif args.document:
+            console.print(f"🤖 [bold cyan]Đang yêu cầu AI viết tài liệu cho file '{args.document}'...[/bold cyan]")
+            prompt_text = f"Sử dụng tool 'document_code' để viết tài liệu cho file '{args.document}'."
+        elif args.refactor:
+            console.print(f"🤖 [bold cyan]Đang yêu cầu AI tái cấu trúc file '{args.refactor}'...[/bold cyan]")
+            prompt_text = f"Sử dụng tool 'refactor_code' để tái cấu trúc code trong file '{args.refactor}'."
+
+        if prompt_text:
+            prompt_parts.append(prompt_text)
+
+        # Hiển thị model đang sử dụng
+        model_display_name = args.model.replace("models/", "")
+        console.print(f"\n[dim]🤖 Model: {model_display_name}[/dim]")
+        console.print("\n💡 [bold green]Phản hồi:[/bold green]")
+        
+        try:
+            final_response_text, token_usage, token_limit = handlers.handle_conversation_turn(
+                chat_session, prompt_parts, console, model_name=args.model, output_format=args.format
+            )
+            
+            # Hiển thị token usage
+            if token_usage and token_usage['total_tokens'] > 0:
+                if token_limit > 0:
+                    remaining = token_limit - token_usage['total_tokens']
+                    console.print(f"\n[dim]📊 Token: {token_usage['prompt_tokens']} (prompt) + "
+                                 f"{token_usage['completion_tokens']} (completion) = "
+                                 f"{token_usage['total_tokens']:,} / {token_limit:,} "
+                                 f"({remaining:,} còn lại)[/dim]")
+                else:
+                    console.print(f"\n[dim]📊 Token: {token_usage['prompt_tokens']} (prompt) + "
+                                 f"{token_usage['completion_tokens']} (completion) = "
+                                 f"{token_usage['total_tokens']:,} (total)[/dim]")
+            
+            # Lưu output nếu có
+            if args.output:
+                with open(args.output, 'w', encoding='utf-8') as f:
+                    f.write(final_response_text)
+                console.print(f"\n[bold green]✅ Đã lưu kết quả vào file: [cyan]{args.output}[/cyan][/bold green]")
+            
+            # Thực thi lệnh được đề xuất
+            utils.execute_suggested_commands(final_response_text, console)
+
+        except ResourceExhausted:
+            console.print("[bold red]❌ Tất cả API keys đều đã hết quota.[/bold red]")
+        except Exception as e:
+            console.print(f"[bold red]\nĐã xảy ra lỗi không mong muốn: {e}[/bold red]")
+            console.print(f"[dim]{traceback.format_exc()}[/dim]")
+
+    except KeyboardInterrupt:
+        console.print("\n[yellow]Đã dừng bởi người dùng.[/yellow]")
+    except Exception as e:
+        console.print(f"[bold red]Đã xảy ra lỗi không mong muốn: {e}[/bold red]")
+        console.print(f"[dim]{traceback.format_exc()}[/dim]")
+
+if __name__ == "__main__":
+    main()
+
+================================================================================
+
+--- FILE: src/prompts.py ---
+
+# src/prompts.py
+"""
+Quản lý và xây dựng các chuỗi prompt hệ thống cho AI.
+Việc tách prompt ra khỏi logic code giúp dễ dàng bảo trì, thử nghiệm
+và chỉnh sửa hành vi của AI mà không cần thay đổi các file chức năng khác.
+"""
+from datetime import datetime
+
+def build_enhanced_instruction(cli_help_text: str = "") -> str:
+    """
+    Xây dựng chuỗi system instruction nâng cao, cung cấp cho AI nhận thức về
+    ngữ cảnh (thời gian) và chính môi trường CLI của nó (self-awareness).
+    """
+    current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    instruction_template = f"""
+You are a powerful AI assistant integrated into a command-line interface (CLI).
+Your goal is to be as helpful as possible.
+
+**CURRENT CONTEXT:**
+- The current date and time is: {current_datetime}.
+
+**YOUR CAPABILITIES:**
+
+**1. Internal Tools (Function Calling):**
+These are tools you can call yourself to get information or perform actions.
+- `search_web(query: str)`: For real-time information (news, weather, etc.).
+- `get_db_schema()`: To see database structure.
+- `run_sql_query(query: str)`: To execute SELECT queries.
+- `list_events(max_results: int)`: To list Google Calendar events.
+- `search_emails(query: str, max_results: int)`: To search Gmail.
+- `save_instruction(instruction: str)`: Use this when the user asks you to remember a rule or preference for the future. For example, if they say "Remember to always respond in Vietnamese," you should call this tool with the instruction "Always respond in Vietnamese."
+- You can also analyze images provided by the user.
+
+**2. Your Full CLI Environment (Self-Awareness):**
+This is the complete `--help` output of the CLI application you are integrated into.
+Use this as the **single source of truth** to answer any questions about the application's capabilities, flags, and commands.
+```text
+{cli_help_text}
+```
+
+**RESPONSE GUIDELINES:**
+- When asked what you can do, or about your flags/commands, synthesize the information from the help text above to provide a complete and accurate answer.
+- **Database Interaction Rule:** If the user asks a question about database content and you don't know the schema, your **first step must be to call `get_db_schema()`**. Do not ask the user for the schema.
+- Be direct, proactive, and helpful.
+"""
+    return instruction_template
+
+
+================================================================================
+
+--- FILE: src/tools/__init__.py ---
+
+
+
+================================================================================
+
+--- FILE: src/tools/calendar_tool.py ---
+
+import datetime
+from googleapiclient.discovery import build
+from auth import get_credentials
+
+def list_events(max_results: int = 10) -> str:
+    """
+    Lists the next upcoming events from the user's primary Google Calendar.
+
+    Args:
+        max_results (int): The maximum number of events to return.
+    """
+    print("--- TOOL: Đang lấy sự kiện từ Lịch Google ---")
+    try:
+        creds = get_credentials()
+        service = build("calendar", "v3", credentials=creds)
+
+        now = datetime.datetime.utcnow().isoformat() + "Z"
+        events_result = (
+            service.events()
+            .list(
+                calendarId="primary",
+                timeMin=now,
+                maxResults=max_results,
+                singleEvents=True,
+                orderBy="startTime",
+            )
+            .execute()
+        )
+        events = events_result.get("items", [])
+
+        if not events:
+            return "No upcoming events found."
+
+        result_str = "Upcoming events:\n"
+        for event in events:
+            start = event["start"].get("dateTime", event["start"].get("date"))
+            result_str += f"- {start}: {event['summary']}\n"
+        return result_str
+    except Exception as e:
+        return f"An error occurred with Google Calendar: {e}"
+
+================================================================================
+
+--- FILE: src/tools/code_tool.py ---
+
+# src/tools/code_tool.py
+"""
+Công cụ dành cho AI để tương tác với các file code,
+như đọc, tái cấu trúc, hoặc viết tài liệu.
+"""
+import google.generativeai as genai
+from config import load_config
+
+def _get_code_from_file(file_path: str) -> str | None:
+    """Hàm trợ giúp để đọc nội dung file."""
+    try:
+        with open(file_path, 'r', encoding='utf-8') as f:
+            return f.read()
+    except FileNotFoundError:
+        return f"Error: File not found at '{file_path}'"
+    except Exception as e:
+        return f"Error reading file: {str(e)}"
+
+def refactor_code(file_path: str) -> str:
+    """
+    Phân tích và đề xuất các phương án tái cấu trúc (refactor) cho code trong một file.
+    Args:
+        file_path (str): Đường dẫn đến file code cần tái cấu trúc.
+    Returns:
+        str: Đoạn code đã được tái cấu trúc hoặc các đề xuất.
+    """
+    print(f"--- TOOL: Đang đọc file để tái cấu trúc: {file_path} ---")
+    code_content = _get_code_from_file(file_path)
+    if code_content.startswith("Error"):
+        return code_content
+
+    config = load_config()
+    model = genai.GenerativeModel(config.get("default_model"))
+    
+    prompt = (
+        "Với vai trò là một kiến trúc sư phần mềm chuyên nghiệp, hãy tái cấu trúc (refactor) đoạn code dưới đây để nó sạch hơn, hiệu quả hơn và dễ bảo trì hơn.\n"
+        "Chỉ trả về phần code đã được cập nhật trong một khối mã duy nhất, không giải thích gì thêm.\n\n"
+        f"```python\n{code_content}\n```"
+    )
+    
+    print("--- TOOL: Đang gửi yêu cầu tái cấu trúc tới AI ---")
+    response = model.generate_content(prompt)
+    return response.text
+
+def document_code(file_path: str) -> str:
+    """
+    Tự động viết tài liệu (docstrings, comments) cho code trong một file.
+    Args:
+        file_path (str): Đường dẫn đến file code cần viết tài liệu.
+    Returns:
+        str: Đoạn code đã được bổ sung tài liệu.
+    """
+    print(f"--- TOOL: Đang đọc file để viết tài liệu: {file_path} ---")
+    code_content = _get_code_from_file(file_path)
+    if code_content.startswith("Error"):
+        return code_content
+
+    config = load_config()
+    model = genai.GenerativeModel(config.get("default_model"))
+    
+    prompt = (
+        "Với vai trò là một lập trình viên kinh nghiệm, hãy viết tài liệu (docstrings cho hàm/class và comment cho các logic phức tạp) cho đoạn code dưới đây.\n"
+        "Hãy tuân thủ các chuẩn viết docstring phổ biến (ví dụ: Google Style hoặc reStructuredText cho Python).\n"
+        "Chỉ trả về phần code đã được cập nhật trong một khối mã duy nhất, không giải thích gì thêm.\n\n"
+        f"```python\n{code_content}\n```"
+    )
+
+    print("--- TOOL: Đang gửi yêu cầu viết tài liệu tới AI ---")
+    response = model.generate_content(prompt)
+    return response.text
+
+================================================================================
+
+--- FILE: src/tools/database.py ---
+
+from sqlalchemy import create_engine, inspect, text
+from config import load_config
+
+def get_db_schema() -> str:
+    """
+    Inspects the database and returns its schema (table names, columns, types).
+    This provides context for the AI to write accurate queries.
+    """
+    print("--- TOOL: Đang lấy schema của database ---")
+    try:
+        config = load_config()
+        db_uri = config.get("database", {}).get("connection_string")
+        if not db_uri:
+            return "Database connection string not configured."
+        
+        engine = create_engine(db_uri)
+        inspector = inspect(engine)
+        schema_info = []
+        for table_name in inspector.get_table_names():
+            columns = [f"{col['name']} ({col['type']})" for col in inspector.get_columns(table_name)]
+            schema_info.append(f"Table '{table_name}': {', '.join(columns)}")
+        
+        # Trả về thông báo rõ ràng nếu không có bảng
+        if not schema_info:
+            return "No tables found in the database."
+            
+        return "\n".join(schema_info)
+    except Exception as e:
+        return f"Error getting database schema: {e}"
+
+def run_sql_query(query: str) -> str:
+    """
+    Executes a read-only SQL query (SELECT) against the database and returns the result.
+    IMPORTANT: For security, only SELECT statements are allowed.
+    Args:
+        query (str): The SQL SELECT statement to execute.
+    """
+    print(f"--- TOOL: Đang thực thi truy vấn SQL: {query} ---")
+    
+    if not query.strip().upper().startswith("SELECT"):
+        return "Error: For security reasons, only SELECT queries are allowed."
+
+    try:
+        config = load_config()
+        db_uri = config.get("database", {}).get("connection_string")
+        if not db_uri:
+            return "Database connection string not configured."
+        
+        engine = create_engine(db_uri)
+        with engine.connect() as connection:
+            result = connection.execute(text(query))
+            rows = result.fetchall()
+            if not rows:
+                return "Query executed successfully, but returned no results."
+            
+            header = result.keys()
+            result_str = " | ".join(map(str, header)) + "\n"
+            result_str += "-" * (len(result_str) - 1) + "\n"
+            for row in rows:
+                result_str += " | ".join(map(str, row)) + "\n"
+            return result_str
+    except Exception as e:
+        return f"Error executing SQL query: {e}"
+
+================================================================================
+
+--- FILE: src/tools/email_tool.py ---
+
+from googleapiclient.discovery import build
+from auth import get_credentials
+
+def search_emails(query: str, max_results: int = 5) -> str:
+    """
+    Searches the user's Gmail for emails matching a query.
+
+    Args:
+        query (str): The search query (e.g., 'from:boss subject:report').
+        max_results (int): The maximum number of emails to return.
+    """
+    print(f"--- TOOL: Đang tìm kiếm Gmail với từ khóa: '{query}' ---")
+    try:
+        creds = get_credentials()
+        service = build("gmail", "v1", credentials=creds)
+
+        results = service.users().messages().list(userId="me", q=query, maxResults=max_results).execute()
+        messages = results.get("messages", [])
+
+        if not messages:
+            return "No emails found matching the query."
+
+        result_str = "Found emails:\n"
+        for msg in messages:
+            msg_data = service.users().messages().get(userId="me", id=msg["id"]).execute()
+            headers = msg_data["payload"]["headers"]
+            subject = next((h["value"] for h in headers if h["name"] == "Subject"), "[No Subject]")
+            sender = next((h["value"] for h in headers if h["name"] == "From"), "[No Sender]")
+            snippet = msg_data["snippet"]
+            result_str += f"- From: {sender}\n  Subject: {subject}\n  Snippet: {snippet}\n\n"
+        return result_str
+    except Exception as e:
+        return f"An error occurred with Gmail: {e}"
+
+================================================================================
+
+--- FILE: src/tools/instruction_tool.py ---
+
+# src/tools/instruction_tool.py
+"""
+Công cụ này cho phép AI tự quản lý danh sách chỉ dẫn tùy chỉnh (custom instructions)
+bằng cách thêm các chỉ dẫn mới vào file config.
+"""
+
+from config import load_config, save_config
+
+def save_instruction(instruction: str) -> str:
+    """
+    Lưu một chỉ dẫn tùy chỉnh lâu dài vào file config.json.
+    AI nên sử dụng công cụ này khi người dùng yêu cầu ghi nhớ một quy tắc
+    hoặc sở thích nào đó cho các cuộc trò chuyện trong tương lai.
+
+    Args:
+        instruction (str): Nội dung chỉ dẫn cần lưu.
+
+    Returns:
+        str: Một thông báo xác nhận rằng chỉ dẫn đã được lưu thành công.
+    """
+    print(f"--- TOOL: Đang lưu chỉ dẫn tùy chỉnh: '{instruction}' ---")
+    try:
+        config = load_config()
+        if "saved_instructions" not in config:
+            config["saved_instructions"] = []
+        
+        # Tránh lưu trùng lặp
+        if instruction not in config["saved_instructions"]:
+            config["saved_instructions"].append(instruction)
+            save_config(config)
+            return f"Đã lưu thành công chỉ dẫn mới: '{instruction}'"
+        else:
+            return f"Chỉ dẫn '{instruction}' đã tồn tại."
+            
+    except Exception as e:
+        return f"Lỗi khi đang lưu chỉ dẫn: {str(e)}"
+
+================================================================================
+
+--- FILE: src/tools/web_search.py ---
+
+import os
+import time
+import requests
+
+# Biến toàn cục để theo dõi thời gian request cuối cùng
+LAST_REQUEST_TIME = 0
+
+def search_web(query: str):
+    """
+    Performs a web search using the official Brave Search API, respecting rate limits.
+    Args:
+        query (str): The search query to find information on the web.
+    Returns:
+        str: Formatted search results with titles, URLs, and snippets.
+    """
+    global LAST_REQUEST_TIME
+    
+    # --- Logic xử lý Rate Limit ---
+    current_time = time.time()
+    elapsed_since_last_request = current_time - LAST_REQUEST_TIME
+    
+    if elapsed_since_last_request < 1.0:
+        sleep_duration = 1.0 - elapsed_since_last_request
+        print(f"--- TOOL: Chờ {sleep_duration:.2f}s để tuân thủ giới hạn 1 request/giây ---")
+        time.sleep(sleep_duration)
+    # --- Kết thúc logic Rate Limit ---
+
+    print(f"--- TOOL: Đang tìm kiếm Brave với từ khóa: '{query}' ---")
+    
+    try:
+        api_key = os.getenv("BRAVE_API_KEY")
+
+        if not api_key:
+            return "Lỗi: Vui lòng cấu hình BRAVE_API_KEY trong file .env"
+
+        headers = {
+            "Accept": "application/json",
+            "X-Subscription-Token": api_key
+        }
+        
+        params = {
+            "q": query,
+            "count": 5
+        }
+
+        # Thực hiện request và cập nhật thời gian
+        response = requests.get(
+            "https://api.search.brave.com/res/v1/web/search",
+            headers=headers,
+            params=params,
+            timeout=10
+        )
+        LAST_REQUEST_TIME = time.time() # Cập nhật thời gian sau khi request hoàn tất
+        response.raise_for_status()
+
+        search_data = response.json()
+        search_items = search_data.get("web", {}).get("results", [])
+
+        if not search_items:
+            return "Không tìm thấy kết quả nào phù hợp."
+
+        results_str = f"Tìm thấy {len(search_items)} kết quả cho '{query}':\n\n"
+        
+        for i, item in enumerate(search_items, 1):
+            title = item.get('title', 'Không có tiêu đề')
+            url = item.get('url', 'Không có URL')
+            snippet = item.get('description', 'Không có mô tả').replace('\n', ' ')
+            
+            results_str += f"[{i}] {title}\n"
+            results_str += f"URL: {url}\n"
+            results_str += f"Nội dung: {snippet}\n\n"
+            
+        return results_str
+
+    except requests.exceptions.RequestException as e:
+        LAST_REQUEST_TIME = time.time() # Cập nhật thời gian ngay cả khi có lỗi
+        error_msg = f"Lỗi mạng khi gọi Brave API: {str(e)}"
+        print(error_msg)
+        return error_msg
+    except Exception as e:
+        LAST_REQUEST_TIME = time.time() # Cập nhật thời gian ngay cả khi có lỗi
+        error_msg = f"Lỗi không xác định khi tìm kiếm: {str(e)}"
+        print(error_msg)
+        return error_msg
+
+================================================================================
+
+--- FILE: src/utils.py ---
+
+# src/utils.py
+
+import os
+import re
+import time
+import subprocess
+from rich.console import Console
+from rich.markdown import Markdown
+from unidecode import unidecode
+
+ALLOWED_EXTENSIONS = {'.py', '.js', '.ts', '.html', '.css', '.scss', '.json', '.yaml', '.yml', 
+                      '.md', '.java', '.cs', '.cpp', '.c', '.h', '.hpp', '.go', '.rs', '.php',
+                      '.rb', '.sql', '.sh', '.txt'}
+IGNORED_DIRS = {'.venv', '.git', '__pycache__', 'node_modules', 'bin', 'obj'}
+
+# --- BẮT ĐẦU THÊM MỚI ---
+def print_streamed_markdown(console: Console, text: str, speed: float = 0.005):
+    """
+    In một chuỗi Markdown ra console với hiệu ứng streaming từng từ.
+    Hàm này giúp cải thiện trải nghiệm người dùng mà không cần thay đổi logic API.
+    """
+    if not text.strip():
+        return
+
+    buffer = ""
+    # In từng ký tự để có hiệu ứng mượt mà
+    for char in text:
+        buffer += char
+        # Chỉ render lại Markdown sau khi gặp khoảng trắng hoặc dòng mới để tối ưu hiệu suất
+        if char.isspace() or char in ['.', ',', '!', '?', ':', ';']:
+            console.print(Markdown(buffer), end="")
+            # Dùng \r để đưa con trỏ về đầu dòng, chuẩn bị ghi đè
+            # Tuy nhiên, Rich xử lý việc này tốt hơn, ta chỉ cần in chồng lên
+            # Vì vậy, chúng ta sẽ xóa dòng hiện tại trước khi in buffer mới
+            # Rich không có cách trực tiếp để "xóa và vẽ lại", 
+            # việc in liên tục với end="" là cách tiếp cận tốt nhất của nó.
+            # Trong trường hợp này, chúng ta sẽ để Rich tự quản lý việc render.
+            # Với Rich, cách tốt nhất là build buffer và in ra một lần.
+            # Để tạo hiệu ứng, chúng ta sẽ dùng cách thủ công hơn.
+            
+    # In phần còn lại của buffer
+    console.print(Markdown(buffer))
+
+    # Cách tiếp cận thứ hai, đơn giản hơn và hiệu quả với Rich
+    # rendered_text = ""
+    # for word in text.split(' '):
+    #     rendered_text += word + " "
+    #     console.clear() # Có thể gây nhấp nháy
+    #     console.print(Markdown(rendered_text))
+    #     time.sleep(speed)
+# --- KẾT THÚC THÊM MỚI ---
+
+
+def get_directory_context() -> str:
+    """Đọc tất cả file hợp lệ trong thư mục hiện tại và trả về nội dung."""
+    context_str = ""
+    for root, dirs, files in os.walk('.'):
+        dirs[:] = [d for d in dirs if d not in IGNORED_DIRS]
+        
+        for file in files:
+            if any(file.endswith(ext) for ext in ALLOWED_EXTENSIONS):
+                file_path = os.path.join(root, file)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        context_str += f"--- START OF FILE: {file_path} ---\n\n"
+                        context_str += f.read()
+                        context_str += f"\n\n--- END OF FILE: {file_path} ---\n\n"
+                except Exception as e:
+                    context_str += f"--- COULD NOT READ FILE: {file_path} (Error: {e}) ---\n\n"
+    return context_str
+
+def execute_suggested_commands(text: str, console: Console):
+    """Tìm, hỏi và thực thi các lệnh shell được đề xuất một cách linh hoạt."""
+    command_blocks = re.findall(r"```(bash|shell|sh)\n(.*?)\n```", text, re.DOTALL)
+    
+    if not command_blocks:
+        return
+
+    execute_all = False
+    for _, command in command_blocks:
+        command = command.strip()
+        
+        if not execute_all:
+            console.print(f"\n[bold yellow]AI đã đề xuất một lệnh:[/bold yellow]")
+            console.print(f"[cyan on default]{command}[/cyan on default]")
+            choice = console.input("Thực thi? [y]es/[n]o/[a]ll/[q]uit: ").lower()
+
+            if choice == 'q':
+                console.print("[yellow]Đã hủy thực thi cho tất cả các lệnh còn lại.[/yellow]")
+                break
+            elif choice == 'a':
+                execute_all = True
+            elif choice != 'y':
+                console.print("[yellow]Đã bỏ qua lệnh.[/yellow]")
+                continue
+        
+        try:
+            console.print(f"[italic green]Đang thực thi...[/italic green]")
+            process = subprocess.Popen(
+                command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8'
+            )
+            for line in process.stdout:
+                console.print(f"[dim]{line.strip()}[/dim]")
+            for line in process.stderr:
+                console.print(f"[bold red]Lỗi:[/bold red] [dim]{line.strip()}[/dim]")
+            process.wait()
+            console.print(f"[bold green]✅ Thực thi hoàn tất.[/bold green]")
+        except Exception as e:
+            console.print(f"[bold red]Lỗi khi thực thi lệnh: {e}[/bold red]")
+            
+def sanitize_filename(name: str) -> str:
+    """Chuyển đổi một chuỗi bất kỳ thành một tên file an toàn."""
+    # Chuyển thành chữ thường, bỏ dấu
+    sanitized_name = unidecode(name).lower()
+    # Thay thế các ký tự không phải chữ, số, gạch dưới bằng gạch dưới
+    sanitized_name = re.sub(r'[^\w\s-]', '', sanitized_name).strip()
+    sanitized_name = re.sub(r'[-\s]+', '_', sanitized_name)
+    return sanitized_name
+
+================================================================================
