@@ -57,7 +57,6 @@ def list_models(console: Console):
             table.add_row(m.name, m.description)
     console.print(table)
 
-# --- BẮT ĐẦU SỬA LỖI KIẾN TRÚC ---
 def start_chat_session(model_name: str, system_instruction: str = None, history: list = None, cli_help_text: str = ""):
     """Khởi tạo chat session. Hàm này sẽ dựa vào cấu hình toàn cục."""
     enhanced_instruction = build_enhanced_instruction(cli_help_text)
@@ -75,7 +74,6 @@ def start_chat_session(model_name: str, system_instruction: str = None, history:
     
     chat = model.start_chat(history=history or [])
     return chat
-# --- KẾT THÚC SỬA LỖI KIẾN TRÚC ---
 
 def send_message(chat_session: genai.ChatSession, prompt_parts: list):
     """
@@ -142,15 +140,13 @@ def get_current_api_key():
         return _api_keys[_current_api_key_index]
     return None
 
-# --- BẮT ĐẦU SỬA LỖI KIẾN TRÚC ---
 def switch_to_next_api_key():
     """Chuyển sang API key tiếp theo và gọi lại genai.configure()."""
     global _current_api_key_index, _api_keys
     _current_api_key_index += 1
     if _current_api_key_index < len(_api_keys):
         new_key = _api_keys[_current_api_key_index]
-        # Đây là bước quan trọng nhất: Cập nhật lại cấu hình toàn cục
+        # Cập nhật lại cấu hình toàn cục
         genai.configure(api_key=new_key)
         return True, f"Key #{_current_api_key_index + 1}"
     return False, "Hết API keys"
-# --- KẾT THÚC SỬA LỖI KIẾN TRÚC ---

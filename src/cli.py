@@ -20,13 +20,11 @@ def create_parser():
     model_group.add_argument("-p", "--persona", type=str, help="Chọn một persona (tính cách) đã định nghĩa trong config.")
     model_group.add_argument("-si", "--system-instruction", type=str, help="Ghi đè chỉ dẫn hệ thống cho phiên này.")
     
-    # --- BẮT ĐẦU THAY ĐỔI ---
     # --- Quản lý Persona ---
     persona_group = parser.add_argument_group('Quản lý Persona')
     persona_group.add_argument("--add-persona", nargs=2, metavar=('NAME', 'INSTRUCTION'), help="Thêm một persona mới. \nVí dụ: --add-persona python_dev \"Bạn là chuyên gia Python...\"")
     persona_group.add_argument("--list-personas", action="store_true", help="Liệt kê tất cả các persona đã lưu.")
     persona_group.add_argument("--rm-persona", metavar="NAME", type=str, help="Xóa một persona đã lưu theo tên.")
-    # --- KẾT THÚC THAY ĐỔI ---
 
     # --- Quản lý Chỉ Dẫn Tùy Chỉnh ---
     instruct_group = parser.add_argument_group('Quản lý Chỉ Dẫn Tùy Chỉnh (Custom Instructions)')

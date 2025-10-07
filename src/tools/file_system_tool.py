@@ -92,6 +92,5 @@ def write_file(path: str, content: str) -> str:
         
         # Trả về một chuỗi đặc biệt để báo cho handler biết cần hỏi người dùng
         return f"USER_CONFIRMATION_REQUIRED:WRITE_FILE:{path}"
-        # --- KẾT THÚC SỬA LỖI TREO ---
     except Exception as e:
         return f"Lỗi khi chuẩn bị ghi file: {e}"

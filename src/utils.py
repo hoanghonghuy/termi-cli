@@ -65,12 +65,10 @@ def execute_suggested_commands(text: str, console: Console):
         do_execute = execute_all
         
         if not execute_all:
-            # --- BẮT ĐẦU SỬA LỖI HIỂN THỊ ---
             # Tách print và input để vừa có màu, vừa không lỗi parsing
             console.print(f"Thực thi lệnh '[cyan]{command}[/cyan]'? [y/n/q]: ", end="")
             sys.stdout.flush()
             individual_choice = input().lower().strip()
-            # --- KẾT THÚC SỬA LỖI HIỂN THỊ ---
 
             if individual_choice == 'q':
                 console.print("[yellow]Đã dừng thực thi.[/yellow]")
