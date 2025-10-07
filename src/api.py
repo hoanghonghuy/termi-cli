@@ -1,4 +1,3 @@
-# src/api.py
 """
 Mô-đun này chịu trách nhiệm quản lý tương tác với API của Google Gemini.
 """
@@ -11,10 +10,10 @@ _current_api_key_index = 0
 _api_keys = []
 
 # Import các tool và prompt builder
-from tools import web_search, database, calendar_tool, email_tool
-from tools import instruction_tool
-from tools import code_tool # Thêm tool mới
-from prompts import build_enhanced_instruction
+from .tools import web_search, database, calendar_tool, email_tool
+from .tools import instruction_tool
+from .tools import code_tool
+from .prompts import build_enhanced_instruction
 
 # Ánh xạ tên tool tới hàm thực thi
 AVAILABLE_TOOLS = {

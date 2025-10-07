@@ -4,7 +4,7 @@ như đọc, tái cấu trúc, hoặc viết tài liệu.
 """
 
 import google.generativeai as genai # Sửa 'generai' thành 'generativeai'
-from config import load_config
+from ..config import load_config
 
 def _get_code_from_file(file_path: str) -> str | None:
     """Hàm trợ giúp để đọc nội dung file."""

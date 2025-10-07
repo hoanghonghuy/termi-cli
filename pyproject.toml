@@ -1,0 +1,39 @@
+# pyproject.toml
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cli-ai-gemini"
+version = "1.0.0"
+authors = [
+  { name="Hoang Hong Huy", email="huy.hoanghong.work@gmail.com" },
+]
+description = "Một AI Agent CLI mạnh mẽ sử dụng Google Gemini."
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "google-generativeai==0.5.4",
+    "google-api-python-client==2.125.0",
+    "google-auth-httplib2==0.2.0",
+    "google-auth-oauthlib==1.2.0",
+    "python-dotenv==1.0.1",
+    "Pillow==11.3.0",
+    "rich==13.7.1",
+    "SQLAlchemy==2.0.43",
+    "unidecode==1.4.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-mock"
+]
+
+[project.scripts]
+gemini-cli = "src.main:main"

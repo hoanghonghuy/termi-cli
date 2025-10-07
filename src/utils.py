@@ -1,5 +1,3 @@
-# src/utils.py
-
 import os
 import re
 import time
@@ -13,13 +11,6 @@ ALLOWED_EXTENSIONS = {'.py', '.js', '.ts', '.html', '.css', '.scss', '.json', '.
                       '.rb', '.sql', '.sh', '.txt'}
 IGNORED_DIRS = {'.venv', '.git', '__pycache__', 'node_modules', 'bin', 'obj'}
 
-# --- BẮT ĐẦU THAY ĐỔI ---
-# Gỡ bỏ hàm print_streamed_markdown không được sử dụng để làm sạch code.
-# Logic xử lý stream đã được chuyển vào process_response_stream trong handlers.py
-# một cách hiệu quả hơn.
-# --- KẾT THÚC THAY ĐỔI ---
-
-
 def get_directory_context() -> str:
     """Đọc tất cả file hợp lệ trong thư mục hiện tại và trả về nội dung."""
     context_str = ""
@@ -29,13 +20,18 @@ def get_directory_context() -> str:
         for file in files:
             if any(file.endswith(ext) for ext in ALLOWED_EXTENSIONS):
                 file_path = os.path.join(root, file)
+                
+                # Chuẩn hóa đường dẫn để loại bỏ các './' không nhất quán
+                normalized_path = os.path.normpath(file_path)
+
                 try:
                     with open(file_path, 'r', encoding='utf-8') as f:
-                        context_str += f"--- START OF FILE: {file_path} ---\n\n"
+                        # Sử dụng đường dẫn đã được chuẩn hóa trong output
+                        context_str += f"--- START OF FILE: {normalized_path} ---\n\n"
                         context_str += f.read()
-                        context_str += f"\n\n--- END OF FILE: {file_path} ---\n\n"
+                        context_str += f"\n\n--- END OF FILE: {normalized_path} ---\n\n"
                 except Exception as e:
-                    context_str += f"--- COULD NOT READ FILE: {file_path} (Error: {e}) ---\n\n"
+                    context_str += f"--- COULD NOT READ FILE: {normalized_path} (Error: {e}) ---\n\n"
     return context_str
 
 def execute_suggested_commands(text: str, console: Console):
@@ -81,7 +77,7 @@ def sanitize_filename(name: str) -> str:
     """Chuyển đổi một chuỗi bất kỳ thành một tên file an toàn."""
     # Chuyển thành chữ thường, bỏ dấu
     sanitized_name = unidecode(name).lower()
-    # Thay thế các ký tự không phải chữ, số, gạch dưới bằng gạch dưới
-    sanitized_name = re.sub(r'[^\w\s-]', '', sanitized_name).strip()
+    # Thay thế các ký tự không phải chữ, số, gạch dưới bằng gạch dưới, dấu chấm
+    sanitized_name = re.sub(r'[^\w\s.-]', '', sanitized_name).strip()
     sanitized_name = re.sub(r'[-\s]+', '_', sanitized_name)
     return sanitized_name

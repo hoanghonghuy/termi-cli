@@ -1,5 +1,3 @@
-# src/cli.py
-
 import argparse
 
 def create_parser():

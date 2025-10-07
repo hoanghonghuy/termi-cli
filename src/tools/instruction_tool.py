@@ -4,7 +4,7 @@ Công cụ này cho phép AI tự quản lý danh sách chỉ dẫn tùy chỉnh
 bằng cách thêm các chỉ dẫn mới vào file config.
 """
 
-from config import load_config, save_config
+from ..config import load_config, save_config
 
 def save_instruction(instruction: str) -> str:
     """

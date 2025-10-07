@@ -1,5 +1,5 @@
 from googleapiclient.discovery import build
-from auth import get_credentials
+from ..auth import get_credentials
 
 def search_emails(query: str, max_results: int = 5) -> str:
     """

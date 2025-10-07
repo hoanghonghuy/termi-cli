@@ -1,4 +1,3 @@
-# src/prompts.py
 """
 Quản lý và xây dựng các chuỗi prompt hệ thống cho AI.
 Việc tách prompt ra khỏi logic code giúp dễ dàng bảo trì, thử nghiệm

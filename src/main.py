@@ -2,13 +2,13 @@ import os
 import sys
 import contextlib
 import argparse
-import re # Thêm import re
+import re
 from rich.markup import escape
 from rich.console import Console
 from rich.markdown import Markdown
 from PIL import Image
 
-from tools import code_tool 
+from .tools import code_tool 
 
 # Context manager để tắt stderr tạm thời
 @contextlib.contextmanager
@@ -52,11 +52,11 @@ import logging as _logging
 import subprocess
 from dotenv import load_dotenv
 
-import api
-import utils
-import cli
-import handlers
-from config import load_config
+from . import api
+from . import utils
+from . import cli
+from . import handlers
+from .config import load_config 
 
 _logging.basicConfig(level=_logging.ERROR)
 
@@ -85,10 +85,8 @@ def main(provided_args=None):
         console.print(f"[dim]🔑 Đã tải {len(keys)} API key(s)[/dim]")
     
     try:
-        # --- BẮT ĐẦU SỬA LỖI ---
         # Luôn configure với key đầu tiên trong danh sách
         api.configure_api(keys[0])
-        # --- KẾT THÚC SỬA LỖI ---
 
         if args.add_instruct:
             handlers.add_instruction(console, config, args.add_instruct)

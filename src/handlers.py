@@ -6,16 +6,18 @@ import re
 import argparse
 from datetime import datetime
 import subprocess
+# import time
 
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
+# from rich.live import Live
 
-import api
-import utils
-from config import save_config, load_config
+from . import api
+from . import utils
+from .config import save_config, load_config
 
 # --- CONSTANTS ---
 HISTORY_DIR = "chat_logs"
@@ -58,21 +60,6 @@ def accumulate_response_stream(response_stream):
     except Exception as e:
         print(f"\n[bold red]Lỗi khi xử lý stream: {e}[/bold red]")
     return full_text, function_calls
-
-def display_response(console: Console, text: str, output_format: str, persona: str = None):
-    """
-    Hiển thị phản hồi cuối cùng với logic định dạng thông minh.
-    """
-    display_text = text
-
-    if persona == 'python_dev' and text.strip() and not text.strip().startswith('```'):
-        display_text = f"```python\n{text.strip()}\n```"
-
-    if output_format == 'rich':
-        console.print(Markdown(display_text))
-    else:
-        console.print(display_text)
-
 
 def print_formatted_history(console: Console, history: list):
     """In lịch sử trò chuyện đã tải ra màn hình."""
@@ -122,7 +109,7 @@ def serialize_history(history):
 
 def handle_conversation_turn(chat_session, prompt_parts, console: Console, model_name: str = None, args: argparse.Namespace = None):
     """
-    Xử lý một lượt hội thoại với logic hiển thị và định dạng lại output.
+    Xử lý một lượt hội thoại với spinner và in kết quả cuối cùng một lần.
     """
     max_retries = len(api._api_keys) if api._api_keys else 1
     
@@ -131,51 +118,9 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
             final_text_response = ""
             total_tokens = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
             
-            response_stream = api.send_message(chat_session, prompt_parts)
-            text_chunk, function_calls = accumulate_response_stream(response_stream)
-            
-            try:
-                response_stream.resolve()
-                usage = api.get_token_usage(response_stream)
-                if usage:
-                    for key in total_tokens:
-                        total_tokens[key] += usage[key]
-            except Exception:
-                pass
-            
-            if text_chunk:
-                final_text_response += text_chunk
-
-            while function_calls:
-                tool_responses = []
-                for func_call in function_calls:
-                    tool_name = func_call.name
-                    tool_args = dict(func_call.args) if func_call.args else {}
-                    
-                    with console.status(f"[bold green]⚙️ Đang chạy tool [cyan]{tool_name}[/cyan]...[/bold green]", spinner="dots") as status:
-                        if tool_name in api.AVAILABLE_TOOLS:
-                            try:
-                                tool_function = api.AVAILABLE_TOOLS[tool_name]
-                                result = tool_function(**tool_args)
-                                if tool_name in ['refactor_code', 'document_code']:
-                                    # Tạm dừng spinner để in kết quả
-                                    status.stop()
-                                    console.print(f"\n[bold cyan]📄 Kết quả từ {tool_name}:[/bold cyan]")
-                                    console.print(Markdown(result))
-                                    console.print()
-                            except Exception as e:
-                                result = f"Error executing tool '{tool_name}': {str(e)}"
-                        else:
-                            result = f"Error: Tool '{tool_name}' not found."
-                    
-                    tool_responses.append({
-                        "function_response": {
-                            "name": tool_name,
-                            "response": {"result": result}
-                        }
-                    })
-
-                response_stream = api.send_message(chat_session, tool_responses)
+            # Sử dụng spinner để cho người dùng biết AI đang làm việc
+            with console.status("[bold green]AI đang suy nghĩ...[/bold green]", spinner="dots") as status:
+                response_stream = api.send_message(chat_session, prompt_parts)
                 text_chunk, function_calls = accumulate_response_stream(response_stream)
                 
                 try:
@@ -188,11 +133,60 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                     pass
                 
                 if text_chunk:
-                    final_text_response += "\n" + text_chunk
+                    final_text_response += text_chunk
 
-            persona = args.persona if args else None
+                while function_calls:
+                    tool_responses = []
+                    for func_call in function_calls:
+                        tool_name = func_call.name
+                        tool_args = dict(func_call.args) if func_call.args else {}
+                        
+                        status.update(f"[bold green]⚙️ Đang chạy tool [cyan]{tool_name}[/cyan]...[/bold green]")
+                        
+                        if tool_name in api.AVAILABLE_TOOLS:
+                            try:
+                                tool_function = api.AVAILABLE_TOOLS[tool_name]
+                                result = tool_function(**tool_args)
+                            except Exception as e:
+                                result = f"Error executing tool '{tool_name}': {str(e)}"
+                        else:
+                            result = f"Error: Tool '{tool_name}' not found."
+                        
+                        tool_responses.append({
+                            "function_response": {
+                                "name": tool_name,
+                                "response": {"result": result}
+                            }
+                        })
+
+                    status.update("[bold green]AI đang xử lý kết quả từ tool...[/bold green]")
+                    response_stream = api.send_message(chat_session, tool_responses)
+                    text_chunk, function_calls = accumulate_response_stream(response_stream)
+                    
+                    try:
+                        response_stream.resolve()
+                        usage = api.get_token_usage(response_stream)
+                        if usage:
+                            for key in total_tokens:
+                                total_tokens[key] += usage[key]
+                    except Exception:
+                        pass
+                    
+                    if text_chunk:
+                        final_text_response += "\n" + text_chunk
+
+            # Sau khi spinner kết thúc, in kết quả cuối cùng
             output_format = args.format if args else 'rich'
-            display_response(console, final_text_response, output_format, persona)
+            persona = args.persona if args else None
+            display_text = final_text_response.strip()
+
+            if persona == 'python_dev' and display_text and not display_text.startswith('```'):
+                display_text = f"```python\n{display_text}\n```"
+
+            if output_format == 'rich':
+                console.print(Markdown(display_text))
+            else:
+                console.print(display_text)
 
             token_limit = api.get_model_token_limit(model_name)
             
@@ -545,7 +539,6 @@ def remove_instruction(console: Console, config: dict, index: int):
         f"[bold green]✅ Đã xóa chỉ dẫn:[/bold green] '{removed_instruction}'"
     )
 
-# --- BẮT ĐẦU THAY ĐỔI: THÊM HANDLER CHO PERSONA ---
 def add_persona(console: Console, config: dict, name: str, instruction: str):
     """Thêm một persona mới vào config."""
     if "personas" not in config:
