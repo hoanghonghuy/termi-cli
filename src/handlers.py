@@ -1,3 +1,4 @@
+# src/handlers.py
 import os
 import sys
 import json
@@ -124,8 +125,7 @@ def get_session_recreation_args(chat_session, args):
 
 def handle_conversation_turn(chat_session, prompt_parts, console: Console, model_name: str = None, args: argparse.Namespace = None):
     """
-    Xử lý một lượt hội thoại với logic retry mạnh mẽ, ưu tiên xử lý lỗi model trước lỗi quota,
-    và xử lý xác nhận người dùng cho các tool đặc biệt.
+    Xử lý một lượt hội thoại với logic retry mạnh mẽ, ưu tiên xử lý lỗi model trước lỗi quota.
     """
     FALLBACK_MODEL = "models/gemini-flash-latest"
     
@@ -172,13 +172,12 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                         else:
                             result = f"Error: Tool '{tool_name}' not found."
                         
-                        # Xử lý trường hợp đặc biệt của write_file
                         if isinstance(result, str) and result.startswith("USER_CONFIRMATION_REQUIRED:WRITE_FILE:"):
-                            status.stop() # Dừng spinner để người dùng có thể nhập
+                            status.stop()
                             file_path_to_write = result.split(":", 2)[2]
                             
                             console.print(f"[bold yellow]⚠️ AI muốn ghi vào file '{file_path_to_write}'. Nội dung sẽ được ghi đè nếu file tồn tại.[/bold yellow]")
-                            choice = console.input("Bạn có đồng ý không? [y/n]: ").lower()
+                            choice = console.input("Bạn có đồng ý không? [y/n]: ", markup=False).lower()
 
                             if choice == 'y':
                                 try:
@@ -194,7 +193,7 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                             else:
                                 result = "Người dùng đã từ chối hành động ghi file."
                             
-                            status.start() # Khởi động lại spinner
+                            status.start()
                         
                         tool_responses.append({
                             "function_response": {
@@ -238,9 +237,12 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
         except (ResourceExhausted, PermissionDenied, InvalidArgument) as e:
             is_preview_model = "preview" in current_model_name or "exp" in current_model_name
             
-            # ƯU TIÊN 1: Xử lý lỗi không có quyền truy cập model (bất kể loại lỗi là gì)
-            if is_preview_model:
-                console.print(f"[bold yellow]⚠️ Cảnh báo:[/bold yellow] Model thử nghiệm [cyan]'{current_model_name}'[/cyan] không thể truy cập.")
+            if isinstance(e, PermissionDenied) or (is_preview_model and isinstance(e, (ResourceExhausted, InvalidArgument))):
+                if current_model_name == FALLBACK_MODEL:
+                    console.print(f"[bold red]❌ Lỗi nghiêm trọng:[/bold red] Ngay cả model dự phòng [cyan]'{FALLBACK_MODEL}'[/cyan] cũng không thể truy cập. Vui lòng kiểm tra lại API key.")
+                    break
+
+                console.print(f"[bold yellow]⚠️ Cảnh báo:[/bold yellow] Không có quyền truy cập model [cyan]'{current_model_name}'[/cyan].")
                 console.print(f"[green]🔄 Tự động chuyển sang model ổn định [cyan]'{FALLBACK_MODEL}'[/cyan] và thử lại...[/green]")
                 
                 current_model_name = FALLBACK_MODEL
@@ -250,10 +252,8 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                     current_model_name, 
                     *get_session_recreation_args(chat_session, args)
                 )
-                # Không tăng attempt_count, cho phép thử lại với model mới trên cùng 1 key
                 continue
-
-            # ƯU TIÊN 2: Xử lý lỗi hết quota thông thường
+            
             elif isinstance(e, ResourceExhausted):
                 attempt_count += 1
                 if attempt_count < max_attempts:
@@ -267,18 +267,15 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                         continue
                 # Nếu không thể chuyển key hoặc đã hết key, sẽ đi xuống cuối vòng lặp
             
-            # ƯU TIÊN 3: Xử lý lỗi API key sai
             elif "API key not valid" in str(e):
                  console.print(f"[bold red]❌ Lỗi API Key:[/bold red] Key đang sử dụng không hợp lệ hoặc đã hết hạn.")
-                 break # Lỗi này không thể cứu vãn, thoát vòng lặp
+                 break
             
-            # Các lỗi khác không lường trước
             else:
                 raise e
         except Exception as e:
             raise
 
-    # Xử lý khi vòng lặp kết thúc mà không thành công
     if attempt_count >= max_attempts:
         console.print(f"\n[bold red]❌ Đã thử hết {max_attempts} API key(s). Tất cả đều hết quota.[/bold red]")
     
@@ -308,7 +305,7 @@ def model_selection_wizard(console: Console, config: dict):
 
     while True:
         try:
-            choice_str = console.input("Nhập số thứ tự của model bạn muốn chọn: ")
+            choice_str = console.input("Nhập số thứ tự của model bạn muốn chọn: ", markup=False)
             choice = int(choice_str) - 1
             if 0 <= choice < len(sorted_models):
                 selected_model = sorted_models[choice]
@@ -502,7 +499,8 @@ def show_history_browser(console: Console):
     console.print(table)
     try:
         choice_str = console.input(
-            "Nhập số để tiếp tục cuộc trò chuyện (nhấn Enter để thoát): "
+            "Nhập số để tiếp tục cuộc trò chuyện (nhấn Enter để thoát): ",
+            markup=False
         )
         if not choice_str:
             console.print("[yellow]Đã thoát trình duyệt lịch sử.[/yellow]")

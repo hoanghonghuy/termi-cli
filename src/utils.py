@@ -1,3 +1,5 @@
+# src/utils.py
+
 import os
 import re
 import subprocess
@@ -50,30 +52,24 @@ def execute_suggested_commands(text: str, console: Console):
     for i, command in enumerate(commands_to_run, 1):
         console.print(f"  [cyan]{i}. {command}[/cyan]")
     
-    # --- BẮT ĐẦU SỬA LỖI HIỂN THỊ ---
-    choice = console.input("Thực thi? [[y]es/[n]o/[a]ll/[q]uit]: ").lower().strip()
-    # --- KẾT THÚC SỬA LỖI HIỂN THỊ ---
+    choice = console.input("Thực thi? [y]es/[n]o/[a]ll/[q]uit: ", markup=False).lower().strip()
 
     if choice in ['n', 'q', '']:
         console.print("[yellow]Đã bỏ qua tất cả các lệnh.[/yellow]")
         return
 
     execute_all = (choice == 'a')
-    first_command = True
 
     for command in commands_to_run:
         do_execute = execute_all
+        
         if not execute_all:
-            if first_command and choice == 'y':
+            individual_choice = console.input(f"Thực thi lệnh '[cyan]{command}[/cyan]'? [y/n/q]: ", markup=False).lower().strip()
+            if individual_choice == 'q':
+                console.print("[yellow]Đã dừng thực thi.[/yellow]")
+                break
+            if individual_choice == 'y':
                 do_execute = True
-                first_command = False
-            else:
-                 individual_choice = console.input(f"Thực thi lệnh '[cyan]{command}[/cyan]'? [y/n/q]: ").lower().strip()
-                 if individual_choice == 'q':
-                     console.print("[yellow]Đã dừng thực thi.[/yellow]")
-                     break
-                 if individual_choice == 'y':
-                     do_execute = True
         
         if do_execute:
             try:
