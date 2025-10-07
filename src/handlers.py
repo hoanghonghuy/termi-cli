@@ -157,6 +157,7 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
     current_model_name = model_name
     attempt_count = 0
     max_attempts = len(api._api_keys)
+    tool_calls_log = []
 
     while attempt_count < max_attempts:
         try:
@@ -219,6 +220,12 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                                 result = "Người dùng đã từ chối hành động ghi file."
                             
                             status.start()
+                            
+                        tool_calls_log.append({
+                            "name": tool_name,
+                            "args": tool_args,
+                            "result": str(result) # Chuyển kết quả thành chuỗi để đảm bảo an toàn
+                        })
                         
                         tool_responses.append({
                             "function_response": {
@@ -257,7 +264,7 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
 
             token_limit = api.get_model_token_limit(current_model_name)
             
-            return final_text_response.strip(), total_tokens, token_limit
+            return final_text_response.strip(), total_tokens, token_limit, tool_calls_log
         
         except (ResourceExhausted, PermissionDenied, InvalidArgument) as e:
             is_preview_model = "preview" in current_model_name or "exp" in current_model_name
@@ -303,7 +310,7 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
     if attempt_count >= max_attempts:
         console.print(f"\n[bold red]❌ Đã thử hết {max_attempts} API key(s). Tất cả đều hết quota.[/bold red]")
     
-    return "", {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}, 0
+    return "", {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}, 0, []
 
 
 def model_selection_wizard(console: Console, config: dict):

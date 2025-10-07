@@ -1,4 +1,3 @@
-# src/memory.py
 import chromadb
 from chromadb.config import Settings
 import time
@@ -33,7 +32,6 @@ except Exception as e:
         def add_memory(*args, **kwargs): pass
         def search_memory(*args, **kwargs): return ""
 
-# --- BẮT ĐẦU THAY ĐỔI ---
 def add_memory(user_intent: str, tool_calls_log: list, final_response: str):
     """
     Thêm một lượt hội thoại hoàn chỉnh, bao gồm cả log gọi tool, vào trí nhớ.
@@ -69,7 +67,6 @@ def add_memory(user_intent: str, tool_calls_log: list, final_response: str):
         print(f"--- MEMORY: Đã ghi nhớ 1 lượt tương tác hoàn chỉnh. ---")
     except Exception as e:
         print(f"--- MEMORY ERROR: Không thể ghi nhớ: {e} ---")
-# --- KẾT THÚC THAY ĐỔI ---
 
 def search_memory(query: str, n_results: int = 2) -> str:
     """

@@ -187,7 +187,7 @@ def main(provided_args=None):
                 )
                 console.print("\n[dim]🤖 Đang yêu cầu AI viết commit message...[/dim]")
                 
-                commit_message, _, _ = handlers.handle_conversation_turn(
+                commit_message, _, _, _ = handlers.handle_conversation_turn(
                     chat_session, prompt_parts, console, model_name=args.model, args=args
                 )
 
@@ -336,12 +336,12 @@ def main(provided_args=None):
         console.print("\n💡 [bold green]Phản hồi:[/bold green]")
         
         try:
-            final_response_text, token_usage, token_limit = handlers.handle_conversation_turn(
+            final_response_text, token_usage, token_limit, tool_calls_log = handlers.handle_conversation_turn(
                 chat_session, prompt_parts, console, model_name=args.model, args=args
             )
             
             if user_intent and final_response_text:
-                memory.add_memory(user_intent, final_response_text)
+                memory.add_memory(user_intent, tool_calls_log, final_response_text)
             
             if token_usage and token_usage['total_tokens'] > 0:
                 if token_limit > 0:
