@@ -10,6 +10,7 @@ def create_parser():
     # --- Các đối số chính ---
     parser.add_argument("prompt", nargs='?', default=None, help="Câu lệnh hỏi AI.")
     parser.add_argument("--chat", action="store_true", help="Bật chế độ chat tương tác.")
+    parser.add_argument("--agent", action="store_true", help="Bật chế độ Agent tự trị để thực hiện các nhiệm vụ phức tạp.")
     
     # --- Cấu hình Model & AI ---
     model_group = parser.add_argument_group('Cấu hình Model & AI')

@@ -1,5 +1,3 @@
-# src/main.py
-
 import os
 import sys
 import io
@@ -209,6 +207,13 @@ def main(provided_args=None):
             except Exception as e:
                 console.print(f"[bold red]Đã xảy ra lỗi trong quá trình git-commit: {e}[/bold red]")
             
+            return
+        
+        if args.agent:
+            if not args.prompt:
+                console.print("[bold red]Lỗi: Chế độ Agent yêu cầu một mục tiêu (prompt).[/bold red]")
+                return
+            handlers.run_agent_mode(console, args)
             return
         
         # Xử lý các tool độc lập

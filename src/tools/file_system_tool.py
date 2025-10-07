@@ -1,10 +1,21 @@
-# src/tools/file_system_tool.py
 import os
 import glob
 from rich.console import Console
 
 # Tạo một console riêng cho tool để tránh xung đột với spinner
 tool_console = Console()
+
+IGNORE_PATTERNS = [
+    '__pycache__',
+    '*.pyc',
+    '*.egg-info',
+    '.venv',
+    '.git',
+    'node_modules',
+    'bin',
+    'obj',
+    'memory_db',
+]
 
 def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False, read_content: bool = False) -> str:
     """
@@ -21,13 +32,19 @@ def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False
         if recursive:
             search_path = os.path.join(directory, '**', pattern)
         
-        files = glob.glob(search_path, recursive=recursive)
+        all_paths = glob.glob(search_path, recursive=recursive)
         
-        if not files:
-            return f"Không tìm thấy file nào khớp với mẫu '{pattern}' trong '{directory}'."
+        # Lọc ra các đường dẫn không mong muốn
+        filtered_paths = []
+        for path in all_paths:
+            # Kiểm tra xem bất kỳ phần nào của đường dẫn có khớp với mẫu bỏ qua không
+            if not any(ignore_part in path.split(os.sep) for ignore_part in IGNORE_PATTERNS):
+                filtered_paths.append(path)
+
+        if not filtered_paths:
+            return f"Không tìm thấy file nào (sau khi lọc) khớp với mẫu '{pattern}' trong '{directory}'."
         
-        # Lọc ra chỉ các file, bỏ qua thư mục nếu cần đọc nội dung
-        files_only = [f for f in files if os.path.isfile(f)]
+        files_only = [f for f in filtered_paths if os.path.isfile(f)]
 
         if read_content:
             content_str = ""
@@ -43,7 +60,7 @@ def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False
                     content_str += f"--- COULD NOT READ FILE: {normalized_path} (Error: {e}) ---\n\n"
             return content_str if content_str else "Không tìm thấy file nào có thể đọc được."
         else:
-            normalized_files = [os.path.normpath(f) for f in files]
+            normalized_files = [os.path.normpath(f) for f in filtered_paths]
             markdown_list = "\n".join(f"- `{f}`" for f in normalized_files)
             return f"Các file và thư mục tìm thấy:\n{markdown_list}"
             
@@ -70,7 +87,6 @@ def write_file(path: str, content: str) -> str:
     """
     print(f"--- TOOL: Yêu cầu ghi file '{path}' ---")
     try:
-        # --- BẮT ĐẦU SỬA LỖI TREO ---
         # Không cần in ra đây nữa vì spinner đã dừng
         # tool_console.print(f"[bold yellow]⚠️ AI muốn ghi vào file '{path}'. Nội dung sẽ được ghi đè nếu file tồn tại.[/bold yellow]")
         

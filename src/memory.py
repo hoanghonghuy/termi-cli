@@ -4,7 +4,6 @@ import time
 import os
 import shutil
 
-# Tạo một thư mục để lưu trữ database
 DB_PATH = "memory_db"
 
 try:
