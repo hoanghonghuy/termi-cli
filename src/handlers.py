@@ -736,7 +736,7 @@ def run_agent_mode(console: Console, args: argparse.Namespace):
             if not thought or not action:
                 raise ValueError("Phản hồi JSON thiếu 'thought' hoặc 'action'.")
 
-            console.print(Panel(f"[cyan]🤔 Suy nghĩ:[/cyan] {thought}", title="[bold magenta]Kế Hoạch Của Agent[/bold magenta]", border_style="magenta"))
+            console.print(Panel(Markdown(thought), title="[bold magenta]Kế Hoạch Của Agent[/bold magenta]", border_style="magenta"))
 
             tool_name_raw = action.get("tool_name", "")
             tool_name = tool_name_raw.split(':')[-1]
@@ -771,14 +771,20 @@ def run_agent_mode(console: Console, args: argparse.Namespace):
                     with console.status(f"[green]Đang chạy tool {tool_name}...[/green]"):
                         observation = tool_function(**tool_args)
                 
-                display_observation = observation
-                lines = observation.splitlines()
-                if len(lines) > 20:
-                    display_observation = "\n".join(lines[:20]) + "\n\n[dim]... (nội dung quá dài, đã được rút gọn) ...[/dim]"
+                display_content = None
+                # Nếu là kết quả đọc file, hiển thị như một khối code để an toàn
+                if tool_name == 'read_file':
+                    # Thêm ngôn ngữ dựa trên đuôi file để có syntax highlighting
+                    file_extension = os.path.splitext(tool_args.get("path", ""))[1].lstrip('.')
+                    lang = file_extension if file_extension else "text"
+                    display_content = Markdown(f"```{lang}\n{observation}\n```")
+                else:
+                    # Các tool khác, render như Markdown bình thường
+                    display_content = Markdown(observation)
+
+                console.print(Panel(display_content, title="[bold blue]👀 Quan sát[/bold blue]", border_style="blue", expand=False))
                 
-                safe_display = escape(display_observation)
-                console.print(Panel(f"[bold blue]👀 Quan sát:[/bold blue]\n{safe_display}", title="[bold blue]Kết Quả Tool[/bold blue]", border_style="blue", expand=False))
-                
+                # Gửi toàn bộ observation gốc cho AI
                 current_prompt_parts = [{"text": f"This was the result of your last action:\n\n{observation}\n\nBased on this, what is your next thought and action to achieve the original objective: '{args.prompt}'?"}]
             else:
                 console.print(f"[bold red]Lỗi: AI cố gắng gọi một tool không tồn tại: {tool_name_raw}[/bold red]")
