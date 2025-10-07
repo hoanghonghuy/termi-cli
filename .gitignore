@@ -30,3 +30,6 @@ __pycache__/
 /dist/
 /build/
 *.egg-info/
+
+/memory_db/
+memory_db/
