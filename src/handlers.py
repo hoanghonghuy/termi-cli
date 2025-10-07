@@ -7,6 +7,7 @@ import re
 import argparse
 from datetime import datetime
 import subprocess
+from collections import namedtuple
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -44,18 +45,42 @@ def get_response_text_from_history(history_entry):
 
 def accumulate_response_stream(response_stream):
     """
-    Chỉ tích lũy text và function calls từ stream, KHÔNG in ra màn hình.
+    Tích lũy text và function calls từ stream, có khả năng phân tích JSON tool call.
     """
     full_text = ""
     function_calls = []
+    
+    MockFunctionCall = namedtuple('MockFunctionCall', ['name', 'args'])
+
     try:
         for chunk in response_stream:
             if chunk.candidates:
                 for part in chunk.candidates[0].content.parts:
-                    if part.text:
-                        full_text += part.text
                     if hasattr(part, 'function_call') and part.function_call:
                         function_calls.append(part.function_call)
+                    
+                    elif part.text:
+                        cleaned_text = part.text.strip()
+                        try:
+                            if cleaned_text.startswith('{') and cleaned_text.endswith('}') and '"tool_name"' in cleaned_text:
+                                json_match = re.search(r'\{.*\}', cleaned_text, re.DOTALL)
+                                if json_match:
+                                    json_str = json_match.group(0)
+                                    data = json.loads(json_str)
+                                    tool_name = data.get("tool_name", "").split(':')[-1]
+                                    tool_args = data.get("tool_args", {})
+                                    
+                                    if tool_name:
+                                        mock_call = MockFunctionCall(name=tool_name, args=tool_args)
+                                        function_calls.append(mock_call)
+                                    else:
+                                        full_text += part.text
+                                else:
+                                    full_text += part.text
+                            else:
+                                full_text += part.text
+                        except json.JSONDecodeError:
+                            full_text += part.text
     except Exception as e:
         print(f"\n[bold red]Lỗi khi xử lý stream: {e}[/bold red]")
     return full_text, function_calls
@@ -265,8 +290,7 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                             *get_session_recreation_args(chat_session, args)
                         )
                         continue
-                # Nếu không thể chuyển key hoặc đã hết key, sẽ đi xuống cuối vòng lặp
-            
+                
             elif "API key not valid" in str(e):
                  console.print(f"[bold red]❌ Lỗi API Key:[/bold red] Key đang sử dụng không hợp lệ hoặc đã hết hạn.")
                  break
@@ -413,7 +437,6 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                         "[cyan]AI đang nghĩ tên cho cuộc trò chuyện...[/cyan]"
                     )
                     
-                    # Xây dựng một chuỗi tóm tắt toàn bộ cuộc hội thoại
                     conversation_summary = ""
                     for content in chat_session.history:
                         if content.role == 'user':
@@ -427,7 +450,7 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                         "Return only the title itself, with no quotes.\n\n"
                         f"--- CONVERSATION ---\n{conversation_summary}"
                     )
-                    
+
                     title_chat = genai.GenerativeModel(
                         config.get("default_model")
                     ).start_chat()
