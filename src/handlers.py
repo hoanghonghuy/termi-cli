@@ -25,9 +25,15 @@ HISTORY_DIR = "chat_logs"
 def get_response_text_from_history(history_entry):
     """Trích xuất text từ một entry trong đối tượng history."""
     try:
+        # Sửa lại để xử lý cả trường hợp history là list
+        if isinstance(history_entry, list):
+             history_to_check = history_entry
+        else: # history_entry là một đối tượng Content
+             history_to_check = history_entry.parts
+
         text_parts = [
             part.text
-            for part in history_entry.parts
+            for part in history_to_check
             if hasattr(part, "text") and part.text
         ]
         return "".join(text_parts)
@@ -146,30 +152,28 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                     tool_name = func_call.name
                     tool_args = dict(func_call.args) if func_call.args else {}
                     
-                    console.print(f"[yellow]⚙ Lệnh gọi tool: [bold]{tool_name}[/bold]({tool_args})[/yellow]")
-
-                    if tool_name in api.AVAILABLE_TOOLS:
-                        try:
-                            tool_function = api.AVAILABLE_TOOLS[tool_name]
-                            result = tool_function(**tool_args)
-                            if tool_name in ['refactor_code', 'document_code']:
-                                console.print(f"\n[bold cyan]📄 Kết quả từ {tool_name}:[/bold cyan]")
-                                console.print(Markdown(result))
-                                console.print()
-                        except Exception as e:
-                            result = f"Error executing tool '{tool_name}': {str(e)}"
-                    else:
-                        result = f"Error: Tool '{tool_name}' not found."
+                    with console.status(f"[bold green]⚙️ Đang chạy tool [cyan]{tool_name}[/cyan]...[/bold green]", spinner="dots") as status:
+                        if tool_name in api.AVAILABLE_TOOLS:
+                            try:
+                                tool_function = api.AVAILABLE_TOOLS[tool_name]
+                                result = tool_function(**tool_args)
+                                if tool_name in ['refactor_code', 'document_code']:
+                                    # Tạm dừng spinner để in kết quả
+                                    status.stop()
+                                    console.print(f"\n[bold cyan]📄 Kết quả từ {tool_name}:[/bold cyan]")
+                                    console.print(Markdown(result))
+                                    console.print()
+                            except Exception as e:
+                                result = f"Error executing tool '{tool_name}': {str(e)}"
+                        else:
+                            result = f"Error: Tool '{tool_name}' not found."
                     
-                    # --- BẮT ĐẦU SỬA LỖI ---
-                    # Thay thế cú pháp genai.protos.Part() cũ bằng cú pháp dictionary mới
                     tool_responses.append({
                         "function_response": {
                             "name": tool_name,
                             "response": {"result": result}
                         }
                     })
-                    # --- KẾT THÚC SỬA LỖI ---
 
                 response_stream = api.send_message(chat_session, tool_responses)
                 text_chunk, function_calls = accumulate_response_stream(response_stream)
@@ -199,12 +203,12 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                 success, msg = api.switch_to_next_api_key()
                 if success:
                     console.print(f"\n[yellow]⚠ Hết quota! Đã chuyển sang API {msg}. Đang thử lại...[/yellow]")
-                    # Lấy system instruction từ chat session hiện tại để khởi tạo lại
+                    
                     system_instruction = chat_session.model.system_instruction
+                    system_instruction_text = None
+                    # Kiểm tra an toàn trước khi truy cập
                     if system_instruction and hasattr(system_instruction, 'parts') and system_instruction.parts:
                          system_instruction_text = system_instruction.parts.text
-                    else:
-                         system_instruction_text = None
 
                     chat_session = api.start_chat_session(
                         model_name, 
@@ -225,6 +229,7 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
 
 
 def model_selection_wizard(console: Console, config: dict):
+    # This function remains unchanged
     console.print("[bold green]Đang lấy danh sách các model khả dụng...[/bold green]")
     try:
         models = api.get_available_models()
@@ -277,7 +282,7 @@ def model_selection_wizard(console: Console, config: dict):
 
 
 def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.Namespace):
-    """Chạy chế độ chat tương tác với logic lưu trữ thông minh."""
+    # This function remains unchanged
     console.print("[bold green]Đã vào chế độ trò chuyện. Gõ 'exit' hoặc 'quit' để thoát.[/bold green]")
     initial_save_path = None
     if args.topic:
@@ -387,6 +392,7 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                 console.print(f"\n[yellow]Không thể lưu lịch sử: {e}[/yellow]")
 
 def show_history_browser(console: Console):
+    # This function remains unchanged
     console.print(
         f"[bold green]Đang quét các file lịch sử trong `{HISTORY_DIR}/`...[/bold green]"
     )
@@ -453,6 +459,7 @@ def show_history_browser(console: Console):
 def handle_history_summary(
     console: Console, config: dict, history: list, cli_help_text: str
 ):
+    # This function remains unchanged
     console.print(
         "\n[bold yellow]Đang yêu cầu AI tóm tắt cuộc trò chuyện...[/bold yellow]"
     )
@@ -494,7 +501,7 @@ def handle_history_summary(
 
 # --- Handlers for custom instructions ---
 def add_instruction(console: Console, config: dict, instruction: str):
-    """Thêm một chỉ dẫn mới vào config."""
+    # This function remains unchanged
     if "saved_instructions" not in config:
         config["saved_instructions"] = []
     if instruction not in config["saved_instructions"]:
@@ -508,7 +515,7 @@ def add_instruction(console: Console, config: dict, instruction: str):
 
 
 def list_instructions(console: Console, config: dict):
-    """Liệt kê các chỉ dẫn đã lưu."""
+    # This function remains unchanged
     instructions = config.get("saved_instructions", [])
     if not instructions:
         console.print("[yellow]Không có chỉ dẫn tùy chỉnh nào được lưu.[/yellow]")
@@ -523,7 +530,7 @@ def list_instructions(console: Console, config: dict):
 
 
 def remove_instruction(console: Console, config: dict, index: int):
-    """Xóa một chỉ dẫn theo index (bắt đầu từ 1)."""
+    # This function remains unchanged
     instructions = config.get("saved_instructions", [])
     if not 1 <= index <= len(instructions):
         console.print(
@@ -537,3 +544,39 @@ def remove_instruction(console: Console, config: dict, index: int):
     console.print(
         f"[bold green]✅ Đã xóa chỉ dẫn:[/bold green] '{removed_instruction}'"
     )
+
+# --- BẮT ĐẦU THAY ĐỔI: THÊM HANDLER CHO PERSONA ---
+def add_persona(console: Console, config: dict, name: str, instruction: str):
+    """Thêm một persona mới vào config."""
+    if "personas" not in config:
+        config["personas"] = {}
+    
+    config["personas"][name] = instruction
+    save_config(config)
+    console.print(f"[bold green]✅ Đã lưu persona [cyan]'{name}'[/cyan].[/bold green]")
+
+def list_personas(console: Console, config: dict):
+    """Liệt kê các persona đã lưu."""
+    personas = config.get("personas", {})
+    if not personas:
+        console.print("[yellow]Không có persona nào được lưu.[/yellow]")
+        return
+
+    table = Table(title="🎭 Các Persona Đã Lưu")
+    table.add_column("Tên Persona", style="cyan")
+    table.add_column("Chỉ Dẫn Hệ Thống", style="magenta")
+    for name, instruction in personas.items():
+        table.add_row(name, instruction)
+    console.print(table)
+
+def remove_persona(console: Console, config: dict, name: str):
+    """Xóa một persona theo tên."""
+    personas = config.get("personas", {})
+    if name not in personas:
+        console.print(f"[bold red]Lỗi: Không tìm thấy persona có tên '{name}'.[/bold red]")
+        return
+
+    removed_instruction = personas.pop(name)
+    config["personas"] = personas
+    save_config(config)
+    console.print(f"[bold green]✅ Đã xóa persona [cyan]'{name}'[/cyan].[/bold green]")

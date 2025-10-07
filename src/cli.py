@@ -14,12 +14,21 @@ def create_parser():
     parser.add_argument("--chat", action="store_true", help="Bật chế độ chat tương tác.")
     
     # --- Cấu hình Model & AI ---
-    parser.add_argument("--list-models", action="store_true", help="Liệt kê các model khả dụng.")
-    parser.add_argument("--set-model", action="store_true", help="Chạy giao diện để chọn model mặc định.")
-    parser.add_argument("-m", "--model", type=str, help="Chọn model cho phiên này (ghi đè tạm thời).")
-    parser.add_argument("-p", "--persona", type=str, help="Chọn một persona (tính cách) đã định nghĩa trong config.")
-    parser.add_argument("-si", "--system-instruction", type=str, help="Ghi đè chỉ dẫn hệ thống cho phiên này.")
+    model_group = parser.add_argument_group('Cấu hình Model & AI')
+    model_group.add_argument("--list-models", action="store_true", help="Liệt kê các model khả dụng.")
+    model_group.add_argument("--set-model", action="store_true", help="Chạy giao diện để chọn model mặc định.")
+    model_group.add_argument("-m", "--model", type=str, help="Chọn model cho phiên này (ghi đè tạm thời).")
+    model_group.add_argument("-p", "--persona", type=str, help="Chọn một persona (tính cách) đã định nghĩa trong config.")
+    model_group.add_argument("-si", "--system-instruction", type=str, help="Ghi đè chỉ dẫn hệ thống cho phiên này.")
     
+    # --- BẮT ĐẦU THAY ĐỔI ---
+    # --- Quản lý Persona ---
+    persona_group = parser.add_argument_group('Quản lý Persona')
+    persona_group.add_argument("--add-persona", nargs=2, metavar=('NAME', 'INSTRUCTION'), help="Thêm một persona mới. \nVí dụ: --add-persona python_dev \"Bạn là chuyên gia Python...\"")
+    persona_group.add_argument("--list-personas", action="store_true", help="Liệt kê tất cả các persona đã lưu.")
+    persona_group.add_argument("--rm-persona", metavar="NAME", type=str, help="Xóa một persona đã lưu theo tên.")
+    # --- KẾT THÚC THAY ĐỔI ---
+
     # --- Quản lý Chỉ Dẫn Tùy Chỉnh ---
     instruct_group = parser.add_argument_group('Quản lý Chỉ Dẫn Tùy Chỉnh (Custom Instructions)')
     instruct_group.add_argument("--add-instruct", metavar="INSTRUCTION", type=str, help="Thêm một chỉ dẫn lâu dài cho AI.")
@@ -27,22 +36,24 @@ def create_parser():
     instruct_group.add_argument("--rm-instruct", metavar="INDEX", type=int, help="Xóa một chỉ dẫn đã lưu theo số thứ tự.")
 
     # --- Quản lý Lịch sử ---
-    parser.add_argument("--history", action="store_true", help="Hiển thị trình duyệt lịch sử chat.")
-    parser.add_argument("--load", type=str, help="Tải lịch sử chat từ một file cụ thể.")
-    parser.add_argument("--topic", type=str, help="Tải hoặc tạo một cuộc trò chuyện theo chủ đề.")
-    parser.add_argument("--print-log", action="store_true", help="In nội dung của file lịch sử đã tải ra màn hình.")
-    parser.add_argument("--summarize", action="store_true", help="Tóm tắt lịch sử chat đã tải (dùng chung với --load hoặc --topic).")
-
+    history_group = parser.add_argument_group('Quản lý Lịch sử')
+    history_group.add_argument("--history", action="store_true", help="Hiển thị trình duyệt lịch sử chat.")
+    history_group.add_argument("--load", type=str, help="Tải lịch sử chat từ một file cụ thể.")
+    history_group.add_argument("--topic", type=str, help="Tải hoặc tạo một cuộc trò chuyện theo chủ đề.")
+    history_group.add_argument("--print-log", action="store_true", help="In nội dung của file lịch sử đã tải ra màn hình.")
+    history_group.add_argument("--summarize", action="store_true", help="Tóm tắt lịch sử chat đã tải (dùng chung với --load hoặc --topic).")
 
     # --- Tích hợp & Tiện ích Code ---
-    parser.add_argument("--git-commit", action="store_true", help="Tự động tạo commit message cho các thay đổi đã staged.")
-    parser.add_argument("--document", type=str, metavar="FILE_PATH", help="Tự động viết tài liệu (docstrings) cho code trong file.")
-    parser.add_argument("--refactor", type=str, metavar="FILE_PATH", help="Đề xuất các phương án tái cấu trúc code trong file.")
+    code_group = parser.add_argument_group('Tích hợp & Tiện ích Code')
+    code_group.add_argument("--git-commit", action="store_true", help="Tự động tạo commit message cho các thay đổi đã staged.")
+    code_group.add_argument("--document", type=str, metavar="FILE_PATH", help="Tự động viết tài liệu (docstrings) cho code trong file.")
+    code_group.add_argument("--refactor", type=str, metavar="FILE_PATH", help="Đề xuất các phương án tái cấu trúc code trong file.")
     
     # --- Input & Output ---
-    parser.add_argument("-i", "--image", nargs='+', type=str, help="Đường dẫn tới một hoặc nhiều file ảnh để phân tích.")
-    parser.add_argument("-rd", "--read-dir", action="store_true", help="Đọc ngữ cảnh của toàn bộ thư mục hiện tại.")
-    parser.add_argument("-f", "--format", type=str, choices=['rich', 'raw'], help="Định dạng output (mặc định: rich).")
-    parser.add_argument("-o", "--output", type=str, metavar="FILE_PATH", help="Lưu kết quả đầu ra vào một file thay vì in ra console.")
+    io_group = parser.add_argument_group('Input & Output')
+    io_group.add_argument("-i", "--image", nargs='+', type=str, help="Đường dẫn tới một hoặc nhiều file ảnh để phân tích.")
+    io_group.add_argument("-rd", "--read-dir", action="store_true", help="Đọc ngữ cảnh của toàn bộ thư mục hiện tại.")
+    io_group.add_argument("-f", "--format", type=str, choices=['rich', 'raw'], help="Định dạng output (mặc định: rich).")
+    io_group.add_argument("-o", "--output", type=str, metavar="FILE_PATH", help="Lưu kết quả đầu ra vào một file thay vì in ra console.")
 
     return parser

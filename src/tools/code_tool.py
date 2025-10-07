@@ -2,7 +2,8 @@
 Công cụ dành cho AI để tương tác với các file code,
 như đọc, tái cấu trúc, hoặc viết tài liệu.
 """
-import google.generativeai as genai
+
+import google.generativeai as genai # Sửa 'generai' thành 'generativeai'
 from config import load_config
 
 def _get_code_from_file(file_path: str) -> str | None:
@@ -29,6 +30,7 @@ def refactor_code(file_path: str) -> str:
         return code_content
 
     config = load_config()
+    # Model sẽ tự động sử dụng API key đã được configure trong main.py
     model = genai.GenerativeModel(config.get("default_model"))
     
     prompt = (
@@ -55,6 +57,7 @@ def document_code(file_path: str) -> str:
         return code_content
 
     config = load_config()
+    # Model sẽ tự động sử dụng API key đã được configure trong main.py
     model = genai.GenerativeModel(config.get("default_model"))
     
     prompt = (

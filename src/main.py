@@ -2,8 +2,15 @@ import os
 import sys
 import contextlib
 import argparse
+import re # Thêm import re
 from rich.markup import escape
+from rich.console import Console
+from rich.markdown import Markdown
+from PIL import Image
 
+from tools import code_tool 
+
+# Context manager để tắt stderr tạm thời
 @contextlib.contextmanager
 def silence_stderr():
     """Tạm thời chuyển hướng stderr sang devnull."""
@@ -39,15 +46,11 @@ try:
 except (ImportError, AttributeError):
     pass
 
-# ---------------- Các import khác của dự án ------------------------
 import json
 import traceback
 import logging as _logging
 import subprocess
 from dotenv import load_dotenv
-from rich.console import Console
-from rich.markdown import Markdown
-from PIL import Image
 
 import api
 import utils
@@ -82,7 +85,10 @@ def main(provided_args=None):
         console.print(f"[dim]🔑 Đã tải {len(keys)} API key(s)[/dim]")
     
     try:
+        # --- BẮT ĐẦU SỬA LỖI ---
+        # Luôn configure với key đầu tiên trong danh sách
         api.configure_api(keys[0])
+        # --- KẾT THÚC SỬA LỖI ---
 
         if args.add_instruct:
             handlers.add_instruction(console, config, args.add_instruct)
@@ -92,6 +98,16 @@ def main(provided_args=None):
             return
         if args.rm_instruct is not None:
             handlers.remove_instruction(console, config, args.rm_instruct)
+            return
+        if args.add_persona:
+            # Sửa lỗi truyền tham số
+            handlers.add_persona(console, config, args.add_persona[0], args.add_persona[1])
+            return
+        if args.list_personas:
+            handlers.list_personas(console, config)
+            return
+        if args.rm_persona:
+            handlers.remove_persona(console, config, args.rm_persona)
             return
         
         if args.list_models:
@@ -105,10 +121,8 @@ def main(provided_args=None):
             if selected_file:
                 while True:
                     prompt_text = "Bạn muốn [c]hat tiếp, [s]ummarize (tóm tắt), hay [q]uit? "
-                    # Dùng escape() để Rich không hiểu nhầm [c], [s], [q] là thẻ markup
                     console.print(f"[bold yellow]{escape(prompt_text)}[/bold yellow]", end="")
                     sys.stdout.flush()
-
                     action = input().lower().strip()
 
                     if action == 'c':
@@ -124,6 +138,36 @@ def main(provided_args=None):
                         break
                     else:
                         console.print("[bold red]Lựa chọn không hợp lệ. Vui lòng chọn 'c', 's', hoặc 'q'.[/bold red]")
+            return
+
+        if args.document or args.refactor:
+            file_path = args.document or args.refactor
+            tool_func = code_tool.document_code if args.document else code_tool.refactor_code
+            tool_name = "viết tài liệu" if args.document else "tái cấu trúc"
+
+            if not os.path.exists(file_path):
+                console.print(f"[bold red]Lỗi: File '{file_path}' không tồn tại.[/bold red]")
+                return
+
+            with console.status(f"[bold green]🤖 Đang {tool_name} cho file [cyan]{file_path}[/cyan]...[/bold green]", spinner="dots"):
+                result = tool_func(file_path=file_path)
+            
+            if result.startswith("Error"):
+                 console.print(f"[bold red]{result}[/bold red]")
+                 return
+
+            if args.output:
+                try:
+                    with open(args.output, 'w', encoding='utf-8') as f:
+                        code_match = re.search(r"```(?:\w+)?\n(.*)```", result, re.DOTALL)
+                        content_to_write = code_match.group(1).strip() if code_match else result
+                        f.write(content_to_write)
+                    console.print(f"\n[bold green]✅ Đã lưu kết quả vào file: [cyan]{args.output}[/cyan][/bold green]")
+                except Exception as e:
+                    console.print(f"[bold red]Lỗi khi lưu file: {e}[/bold red]")
+            else:
+                console.print(f"\n[bold green]✨ Kết quả {tool_name}:[/bold green]")
+                console.print(Markdown(result))
             return
 
         saved_instructions = config.get("saved_instructions", [])
@@ -170,7 +214,7 @@ def main(provided_args=None):
         if not sys.stdin.isatty():
              piped_input = sys.stdin.read().strip()
         
-        if not any([args.prompt, piped_input, args.image, args.git_commit, args.document, args.refactor]):
+        if not any([args.prompt, piped_input, args.image, args.git_commit]):
              console.print("[bold red]Lỗi: Cần cung cấp prompt hoặc một hành động cụ thể.[/bold red]")
              parser.print_help()
              return
@@ -208,13 +252,7 @@ def main(provided_args=None):
                  "Hãy viết một commit message theo chuẩn Conventional Commits dựa trên git diff sau:\n"
                  f"```diff\n{diff}\n```"
              )
-        elif args.document:
-            console.print(f"🤖 [bold cyan]Đang yêu cầu AI viết tài liệu cho file '{args.document}'...[/bold cyan]")
-            prompt_text = f"Sử dụng tool 'document_code' để viết tài liệu cho file '{args.document}'."
-        elif args.refactor:
-            console.print(f"🤖 [bold cyan]Đang yêu cầu AI tái cấu trúc file '{args.refactor}'...[/bold cyan]")
-            prompt_text = f"Sử dụng tool 'refactor_code' để tái cấu trúc code trong file '{args.refactor}'."
-
+        
         if prompt_text:
             prompt_parts.append(prompt_text)
 
@@ -230,16 +268,16 @@ def main(provided_args=None):
             if token_usage and token_usage['total_tokens'] > 0:
                 if token_limit > 0:
                     remaining = token_limit - token_usage['total_tokens']
-                    console.print(f"\n[dim] Token: {token_usage['prompt_tokens']} (prompt) + "
+                    console.print(f"\n[dim]📊 Token: {token_usage['prompt_tokens']} (prompt) + "
                                  f"{token_usage['completion_tokens']} (completion) = "
                                  f"{token_usage['total_tokens']:,} / {token_limit:,} "
                                  f"({remaining:,} còn lại)[/dim]")
                 else:
-                    console.print(f"\n[dim] Token: {token_usage['prompt_tokens']} (prompt) + "
+                    console.print(f"\n[dim]📊 Token: {token_usage['prompt_tokens']} (prompt) + "
                                  f"{token_usage['completion_tokens']} (completion) = "
                                  f"{token_usage['total_tokens']:,} (total)[/dim]")
             
-            if args.output:
+            if args.output and not (args.document or args.refactor):
                 with open(args.output, 'w', encoding='utf-8') as f:
                     f.write(final_response_text)
                 console.print(f"\n[bold green]✅ Đã lưu kết quả vào file: [cyan]{args.output}[/cyan][/bold green]")
