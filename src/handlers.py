@@ -14,6 +14,7 @@ from rich.table import Table
 import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted, PermissionDenied, InvalidArgument
 from rich.panel import Panel
+from rich.markup import escape
 
 from . import api
 from . import utils
@@ -713,7 +714,6 @@ def run_agent_mode(console: Console, args: argparse.Namespace):
             return
 
         try:
-            # Tìm khối JSON, có thể có markdown hoặc không
             json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
             if not json_match:
                 json_match = re.search(r'(\{.*?\})', response_text, re.DOTALL)
@@ -725,7 +725,6 @@ def run_agent_mode(console: Console, args: argparse.Namespace):
 
             json_str = json_match.group(1)
             
-            # tìm các newline không được escape bên trong dấu ngoặc kép và thay thế chúng
             def escape_newlines(match):
                 return match.group(0).replace('\n', '\\n')
             json_str_fixed = re.sub(r'"[^"]*"', escape_newlines, json_str)
@@ -739,12 +738,14 @@ def run_agent_mode(console: Console, args: argparse.Namespace):
 
             console.print(Panel(f"[cyan]🤔 Suy nghĩ:[/cyan] {thought}", title="[bold magenta]Kế Hoạch Của Agent[/bold magenta]", border_style="magenta"))
 
-            tool_name = action.get("tool_name")
+            tool_name_raw = action.get("tool_name", "")
+            tool_name = tool_name_raw.split(':')[-1]
+            
             tool_args = action.get("tool_args", {})
 
             if tool_name == "finish":
                 final_answer = tool_args.get("answer", "Nhiệm vụ đã hoàn thành.")
-                console.print(Panel(f"[bold green]✅ Nhiệm Vụ Hoàn Thành[/bold green]\n{final_answer}", border_style="green"))
+                console.print(Panel(Markdown(final_answer), title="[bold green]✅ Nhiệm Vụ Hoàn Thành[/bold green]", border_style="green"))
                 break
 
             if tool_name in api.AVAILABLE_TOOLS:
@@ -770,10 +771,17 @@ def run_agent_mode(console: Console, args: argparse.Namespace):
                     with console.status(f"[green]Đang chạy tool {tool_name}...[/green]"):
                         observation = tool_function(**tool_args)
                 
-                console.print(Panel(f"[bold blue]👀 Quan sát:[/bold blue]\n{observation}", title="[bold blue]Kết Quả Tool[/bold blue]", border_style="blue", expand=False))
+                display_observation = observation
+                lines = observation.splitlines()
+                if len(lines) > 20:
+                    display_observation = "\n".join(lines[:20]) + "\n\n[dim]... (nội dung quá dài, đã được rút gọn) ...[/dim]"
+                
+                safe_display = escape(display_observation)
+                console.print(Panel(f"[bold blue]👀 Quan sát:[/bold blue]\n{safe_display}", title="[bold blue]Kết Quả Tool[/bold blue]", border_style="blue", expand=False))
+                
                 current_prompt_parts = [{"text": f"This was the result of your last action:\n\n{observation}\n\nBased on this, what is your next thought and action to achieve the original objective: '{args.prompt}'?"}]
             else:
-                console.print(f"[bold red]Lỗi: AI cố gắng gọi một tool không tồn tại: {tool_name}[/bold red]")
+                console.print(f"[bold red]Lỗi: AI cố gắng gọi một tool không tồn tại: {tool_name_raw}[/bold red]")
                 break
 
         except (json.JSONDecodeError, ValueError) as e:
