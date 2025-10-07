@@ -232,32 +232,27 @@ def main(provided_args=None):
 
         if args.git_commit:
             try:
-                # Kiểm tra xem có thay đổi nào không
                 git_status = subprocess.check_output(["git", "status", "--porcelain"], text=True, encoding='utf-8').strip()
                 if not git_status:
                     console.print("[yellow]Không có thay đổi nào trong repository để commit.[/yellow]")
                     return
 
-                # Bước 1: Tự động chạy `git add .`
                 console.print("[yellow]Đang tự động stage tất cả các thay đổi (`git add .`)...[/yellow]")
                 subprocess.run(["git", "add", "."], check=True)
                 
-                # Bước 2: Lấy diff của các thay đổi đã được staged
                 staged_diff = subprocess.check_output(["git", "diff", "--staged"], text=True, encoding='utf-8').strip()
                 if not staged_diff:
                      console.print("[yellow]Không có thay đổi nào được staged để commit sau khi chạy 'git add'.[/yellow]")
                      return
 
-                # Bước 3: Yêu cầu AI chỉ viết commit message
                 prompt_text = (
                     "**CRITICAL TASK:** Based on the following `git diff --staged` output, write a complete and well-formatted Conventional Commit message. "
                     "The message should have a subject line, a blank line, and a detailed body explaining the changes.\n\n"
-                    "**IMPORTANT:** Respond with ONLY the commit message content, starting with the type (e.g., 'feat:', 'fix:', 'docs:'). Do not include `git commit -m` or any other commands or explanations.\n\n"
+                    "**IMPORTANT:** Respond with ONLY the raw commit message content. Do not include any commands, explanations, or markdown formatting.\n\n"
                     f"```diff\n{staged_diff}\n```"
                 )
                 prompt_parts = [prompt_text]
                 
-                # Gửi yêu cầu tới AI
                 chat_session = api.start_chat_session(args.model, system_instruction_str, history, cli_help_text=cli_help_text)
                 console.print("\n[dim]🤖 Đang yêu cầu AI viết commit message...[/dim]")
                 
@@ -266,13 +261,20 @@ def main(provided_args=None):
                 )
 
                 if commit_message:
-                    # Bước 4: Tự xây dựng lệnh commit hoàn chỉnh
-                    commit_command = f'git commit -m "{commit_message}"'
+                    # Tạo file commit tạm thời
+                    commit_file_path = "COMMIT_EDITMSG.tmp"
+                    with open(commit_file_path, "w", encoding="utf-8") as f:
+                        f.write(commit_message)
+
+                    # Xây dựng lệnh commit chuẩn sử dụng cờ -F
+                    commit_command = f'git commit -F "{commit_file_path}"'
                     
-                    # Bước 5: Sử dụng execute_suggested_commands để hỏi và thực thi
-                    # Chúng ta tạo ra một "phản hồi giả" của AI chứa khối lệnh duy nhất
                     fake_ai_response = f"```shell\n{commit_command}\n```"
                     utils.execute_suggested_commands(fake_ai_response, console)
+
+                    # Dọn dẹp file tạm
+                    if os.path.exists(commit_file_path):
+                        os.remove(commit_file_path)
 
             except subprocess.CalledProcessError as e:
                 console.print(f"[bold red]Lỗi khi chạy lệnh git: {e.stderr}[/bold red]")
