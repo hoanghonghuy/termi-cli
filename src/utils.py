@@ -31,14 +31,12 @@ def get_directory_context() -> str:
 
 def execute_suggested_commands(text: str, console: Console):
     """
-    Tìm, hỏi và thực thi CHỈ các lệnh shell được đề xuất bên trong các khối mã.
+    Tìm, hỏi và thực thi các lệnh shell được đề xuất bên trong các khối mã.
     """
-    # Chỉ tìm các khối lệnh shell và bỏ qua mọi văn bản khác
     command_blocks = re.findall(r"```(?:bash|shell|sh)\n(.*?)\n```", text, re.DOTALL)
     
     commands_to_run = []
     for block in command_blocks:
-        # Tách các lệnh trong một khối nếu có nhiều dòng, bỏ qua các dòng comment
         commands_in_block = [
             cmd.strip() for cmd in block.strip().split('\n') 
             if cmd.strip() and not cmd.strip().startswith('#')
@@ -64,7 +62,6 @@ def execute_suggested_commands(text: str, console: Console):
     for command in commands_to_run:
         do_execute = execute_all
         if not execute_all:
-            # Nếu chọn 'y', chỉ thực thi lệnh đầu tiên, các lệnh sau hỏi lại
             if first_command and choice == 'y':
                 do_execute = True
                 first_command = False
@@ -79,21 +76,21 @@ def execute_suggested_commands(text: str, console: Console):
         if do_execute:
             try:
                 console.print(f"\n[italic green]▶️ Đang thực thi '[cyan]{command}[/cyan]'...[/italic green]")
-                process = subprocess.Popen(
-                    command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, encoding='utf-8'
+                process = subprocess.run(
+                    command, shell=True, capture_output=True, text=True, encoding='utf-8', check=True
                 )
                 
-                for line in process.stdout:
-                    console.print(f"[dim]{line.strip()}[/dim]")
-                for line in process.stderr:
-                    console.print(f"[bold red]Lỗi:[/bold red] [dim]{line.strip()}[/dim]")
+                if process.stdout:
+                    console.print(f"[dim]{process.stdout.strip()}[/dim]")
+                if process.stderr:
+                    console.print(f"[dim]STDERR: {process.stderr.strip()}[/dim]")
 
-                process.wait()
-                if process.returncode == 0:
-                    console.print(f"[bold green]✅ Thực thi hoàn tất.[/bold green]")
-                else:
-                    console.print(f"[bold red]❌ Lệnh kết thúc với mã lỗi {process.returncode}.[/bold red]")
+                console.print(f"[bold green]✅ Thực thi hoàn tất.[/bold green]")
 
+            except subprocess.CalledProcessError as e:
+                 console.print(f"[bold red]❌ Lệnh kết thúc với mã lỗi {e.returncode}.[/bold red]")
+                 if e.stderr:
+                     console.print(f"[bold red]Lỗi:[/bold red] [dim]{e.stderr.strip()}[/dim]")
             except Exception as e:
                 console.print(f"[bold red]Lỗi khi thực thi lệnh: {e}[/bold red]")
         else:
