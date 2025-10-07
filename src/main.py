@@ -231,15 +231,34 @@ def main(provided_args=None):
         user_intent = ""
 
         if args.git_commit:
-             diff = subprocess.check_output(["git", "diff", "--staged"], text=True, encoding='utf-8')
-             if not diff.strip():
-                 console.print("[yellow]Không có thay đổi nào đã được staged (git add).[/yellow]")
-                 return
-             user_intent = (
-                 "Hãy viết một commit message theo chuẩn Conventional Commits dựa trên git diff sau:\n"
-                 f"```diff\n{diff}\n```"
-             )
-             prompt_text = user_intent
+            try:
+                staged_diff = subprocess.check_output(["git", "diff", "--staged"], text=True, encoding='utf-8').strip()
+                unstaged_diff = subprocess.check_output(["git", "diff"], text=True, encoding='utf-8').strip()
+                untracked_files = subprocess.check_output(["git", "ls-files", "--others", "--exclude-standard"], text=True, encoding='utf-8').strip()
+
+                if not staged_diff and not unstaged_diff and not untracked_files:
+                    console.print("[yellow]Không có thay đổi nào trong repository để commit.[/yellow]")
+                    return
+                
+                git_context = "Dưới đây là trạng thái hiện tại của repository Git:\n\n"
+                if staged_diff:
+                    git_context += f"--- CÁC THAY ĐỔI ĐÃ STAGED ---\n```diff\n{staged_diff}\n```\n\n"
+                if unstaged_diff:
+                    git_context += f"--- CÁC THAY ĐỔI CHƯA STAGED ---\n```diff\n{unstaged_diff}\n```\n\n"
+                if untracked_files:
+                    git_context += f"--- CÁC FILE MỚI CHƯA ĐƯỢC THEO DÕI ---\n{untracked_files}\n\n"
+
+                user_intent = (
+                    f"{git_context}"
+                    "**CRITICAL TASK:** Based on all the Git status information above, you MUST generate exactly two separate shell code blocks:\n"
+                    "1. A `git add` command to stage ALL changes (modified and new files).\n"
+                    "2. A complete `git commit -m \"...\"` command with a well-written Conventional Commit message that summarizes all the changes.\n"
+                    "Do not provide any explanation outside of these two code blocks."
+                )
+                prompt_text = user_intent
+            except subprocess.CalledProcessError:
+                console.print("[bold red]Lỗi: Không thể chạy lệnh git. Đây có phải là một repository Git không?[/bold red]")
+                return
         else:
             user_question = args.prompt or ""
             if piped_input:

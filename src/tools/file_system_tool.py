@@ -6,11 +6,16 @@ from rich.console import Console
 # Tạo một console riêng cho tool để tránh xung đột với spinner
 tool_console = Console()
 
-def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False) -> str:
+def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False, read_content: bool = False) -> str:
     """
-    Liệt kê các file và thư mục, trả về dưới dạng danh sách Markdown.
+    Liệt kê các file và thư mục. Nếu read_content=True, sẽ đọc và trả về nội dung của các file tìm thấy.
+    Args:
+        directory (str): Thư mục cần liệt kê.
+        pattern (str): Mẫu để lọc file (ví dụ: '*.py').
+        recursive (bool): Nếu True, sẽ tìm kiếm trong các thư mục con.
+        read_content (bool): Nếu True, sẽ đọc nội dung của các file tìm thấy.
     """
-    print(f"--- TOOL: Liệt kê file trong '{directory}' với mẫu '{pattern}' ---")
+    print(f"--- TOOL: Liệt kê file trong '{directory}' với mẫu '{pattern}' (Read: {read_content}) ---")
     try:
         search_path = os.path.join(directory, pattern)
         if recursive:
@@ -21,11 +26,27 @@ def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False
         if not files:
             return f"Không tìm thấy file nào khớp với mẫu '{pattern}' trong '{directory}'."
         
-        # --- BẮT ĐẦU SỬA LỖI HIỂN THỊ ---
-        # Định dạng output thành danh sách Markdown
-        markdown_list = "\n".join(f"- `{os.path.normpath(f)}`" for f in files)
-        return f"Các file và thư mục tìm thấy:\n{markdown_list}"
-        # --- KẾT THÚC SỬA LỖI HIỂN THỊ ---
+        # Lọc ra chỉ các file, bỏ qua thư mục nếu cần đọc nội dung
+        files_only = [f for f in files if os.path.isfile(f)]
+
+        if read_content:
+            content_str = ""
+            for file_path in files_only:
+                normalized_path = os.path.normpath(file_path)
+                try:
+                    with open(file_path, 'r', encoding='utf-8') as f:
+                        content = f.read()
+                    content_str += f"--- START OF FILE: {normalized_path} ---\n\n"
+                    content_str += content
+                    content_str += f"\n\n--- END OF FILE: {normalized_path} ---\n\n"
+                except Exception as e:
+                    content_str += f"--- COULD NOT READ FILE: {normalized_path} (Error: {e}) ---\n\n"
+            return content_str if content_str else "Không tìm thấy file nào có thể đọc được."
+        else:
+            normalized_files = [os.path.normpath(f) for f in files]
+            markdown_list = "\n".join(f"- `{f}`" for f in normalized_files)
+            return f"Các file và thư mục tìm thấy:\n{markdown_list}"
+            
     except Exception as e:
         return f"Lỗi khi liệt kê file: {e}"
 

@@ -7,6 +7,10 @@ import google.generativeai as genai
 from rich.table import Table
 from rich.console import Console
 
+from .tools import web_search, database, calendar_tool, email_tool, file_system_tool, shell_tool
+from .tools import instruction_tool
+from .tools import code_tool
+
 _current_api_key_index = 0
 _api_keys = []
 
@@ -30,6 +34,7 @@ AVAILABLE_TOOLS = {
     file_system_tool.list_files.__name__: file_system_tool.list_files,
     file_system_tool.read_file.__name__: file_system_tool.read_file,
     file_system_tool.write_file.__name__: file_system_tool.write_file,
+    shell_tool.execute_command.__name__: shell_tool.execute_command,
 }
 
 def configure_api(api_key: str):
