@@ -413,21 +413,21 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                         "[cyan]AI đang nghĩ tên cho cuộc trò chuyện...[/cyan]"
                     )
                     
-                    first_user_prompt = "Initial conversation"
-                    first_ai_response = ""
-                    
-                    user_found = False
+                    # Xây dựng một chuỗi tóm tắt toàn bộ cuộc hội thoại
+                    conversation_summary = ""
                     for content in chat_session.history:
-                        if not user_found and content.role == 'user':
-                            first_user_prompt = get_response_text_from_history(content)
-                            user_found = True
-                        elif user_found and content.role == 'model':
-                            first_ai_response = get_response_text_from_history(content)
-                            break
-                    
-                    context_for_title = f"User's first question was: '{first_user_prompt}'. The AI's first response was: '{first_ai_response}'"
-                    prompt_for_title = f"Based on the following initial exchange, create a very short, descriptive title (under 7 words) for this conversation. Return only the title.\n\nContext:\n{context_for_title}"
+                        if content.role == 'user':
+                            conversation_summary += f"User: {get_response_text_from_history(content)}\n"
+                        elif content.role == 'model':
+                            conversation_summary += f"AI: {get_response_text_from_history(content)}\n"
 
+                    prompt_for_title = (
+                        "Based on the following full conversation transcript, create a very short, "
+                        "descriptive title (under 7 words) that captures the main topic. "
+                        "Return only the title itself, with no quotes.\n\n"
+                        f"--- CONVERSATION ---\n{conversation_summary}"
+                    )
+                    
                     title_chat = genai.GenerativeModel(
                         config.get("default_model")
                     ).start_chat()
