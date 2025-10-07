@@ -51,7 +51,7 @@ def create_parser():
     io_group = parser.add_argument_group('Input & Output')
     io_group.add_argument("-i", "--image", nargs='+', type=str, help="Đường dẫn tới một hoặc nhiều file ảnh để phân tích.")
     io_group.add_argument("-rd", "--read-dir", action="store_true", help="Đọc ngữ cảnh của toàn bộ thư mục hiện tại.")
-    io_group.add_argument("-f", "--format", type=str, choices=['rich', 'raw'], help="Định dạng output (mặc định: rich).")
+    io_group.add_argument("-f", "--format", type=str, help="Định dạng output (mặc định: rich).")
     io_group.add_argument("-o", "--output", type=str, metavar="FILE_PATH", help="Lưu kết quả đầu ra vào một file thay vì in ra console.")
 
     return parser

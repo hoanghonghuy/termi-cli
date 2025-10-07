@@ -26,7 +26,8 @@ dependencies = [
     "Pillow==11.3.0",
     "rich==13.7.1",
     "SQLAlchemy==2.0.43",
-    "unidecode==1.4.0"
+    "unidecode==1.4.0",
+    "chromadb"
 ]
 
 [project.optional-dependencies]

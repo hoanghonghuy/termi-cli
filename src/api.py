@@ -1,3 +1,4 @@
+# src/api.py
 """
 Mô-đun này chịu trách nhiệm quản lý tương tác với API của Google Gemini.
 """
@@ -10,10 +11,11 @@ _current_api_key_index = 0
 _api_keys = []
 
 # Import các tool và prompt builder
-from .tools import web_search, database, calendar_tool, email_tool
+from .tools import web_search, database, calendar_tool, email_tool,file_system_tool
 from .tools import instruction_tool
 from .tools import code_tool
 from .prompts import build_enhanced_instruction
+
 
 # Ánh xạ tên tool tới hàm thực thi
 AVAILABLE_TOOLS = {
@@ -25,10 +27,13 @@ AVAILABLE_TOOLS = {
     instruction_tool.save_instruction.__name__: instruction_tool.save_instruction,
     code_tool.refactor_code.__name__: code_tool.refactor_code,
     code_tool.document_code.__name__: code_tool.document_code,
+    file_system_tool.list_files.__name__: file_system_tool.list_files,
+    file_system_tool.read_file.__name__: file_system_tool.read_file,
+    file_system_tool.write_file.__name__: file_system_tool.write_file,
 }
 
 def configure_api(api_key: str):
-    """Cấu hình API key."""
+    """Cấu hình API key ban đầu."""
     genai.configure(api_key=api_key)
 
 def get_available_models() -> list[str]:
@@ -47,21 +52,25 @@ def list_models(console: Console):
             table.add_row(m.name, m.description)
     console.print(table)
 
+# --- BẮT ĐẦU SỬA LỖI KIẾN TRÚC ---
 def start_chat_session(model_name: str, system_instruction: str = None, history: list = None, cli_help_text: str = ""):
-    """Khởi tạo chat session."""
+    """Khởi tạo chat session. Hàm này sẽ dựa vào cấu hình toàn cục."""
     enhanced_instruction = build_enhanced_instruction(cli_help_text)
     if system_instruction:
         enhanced_instruction = f"**PRIMARY DIRECTIVE (User-defined rules):**\n{system_instruction}\n\n---\n\n{enhanced_instruction}"
 
     tools_config = list(AVAILABLE_TOOLS.values())
     
+    # Gỡ bỏ hoàn toàn việc truyền key trực tiếp. Model sẽ tự lấy từ cấu hình toàn cục.
     model = genai.GenerativeModel(
         model_name, 
         system_instruction=enhanced_instruction,
         tools=tools_config
     )
+    
     chat = model.start_chat(history=history or [])
     return chat
+# --- KẾT THÚC SỬA LỖI KIẾN TRÚC ---
 
 def send_message(chat_session: genai.ChatSession, prompt_parts: list):
     """
@@ -91,11 +100,10 @@ def get_model_token_limit(model_name: str) -> int:
         model_info = genai.get_model(model_name)
         if hasattr(model_info, 'input_token_limit'):
             return model_info.input_token_limit
-        # Fallback cho các model không có thông tin
         if 'flash' in model_name.lower():
-            return 1000000  # Flash models thường có 1M tokens
+            return 1000000
         elif 'pro' in model_name.lower():
-            return 2000000  # Pro models thường có 2M tokens
+            return 2000000
     except Exception:
         pass
     return 0
@@ -110,7 +118,6 @@ def initialize_api_keys():
     if primary:
         _api_keys.append(primary)
     
-    # Thêm các key backup
     i = 2
     while True:
         key_name = f"GOOGLE_API_KEY_{i}ND" if i == 2 else f"GOOGLE_API_KEY_{i}RD" if i == 3 else f"GOOGLE_API_KEY_{i}TH"
@@ -130,12 +137,15 @@ def get_current_api_key():
         return _api_keys[_current_api_key_index]
     return None
 
+# --- BẮT ĐẦU SỬA LỖI KIẾN TRÚC ---
 def switch_to_next_api_key():
-    """Chuyển sang API key tiếp theo"""
+    """Chuyển sang API key tiếp theo và gọi lại genai.configure()."""
     global _current_api_key_index, _api_keys
     _current_api_key_index += 1
     if _current_api_key_index < len(_api_keys):
         new_key = _api_keys[_current_api_key_index]
-        configure_api(new_key)
+        # Đây là bước quan trọng nhất: Cập nhật lại cấu hình toàn cục
+        genai.configure(api_key=new_key)
         return True, f"Key #{_current_api_key_index + 1}"
     return False, "Hết API keys"
+# --- KẾT THÚC SỬA LỖI KIẾN TRÚC ---

@@ -6,14 +6,12 @@ import re
 import argparse
 from datetime import datetime
 import subprocess
-# import time
 
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted
-# from rich.live import Live
+from google.api_core.exceptions import ResourceExhausted, PermissionDenied, InvalidArgument
 
 from . import api
 from . import utils
@@ -27,15 +25,15 @@ HISTORY_DIR = "chat_logs"
 def get_response_text_from_history(history_entry):
     """Trích xuất text từ một entry trong đối tượng history."""
     try:
-        # Sửa lại để xử lý cả trường hợp history là list
+        parts_to_check = []
         if isinstance(history_entry, list):
-             history_to_check = history_entry
-        else: # history_entry là một đối tượng Content
-             history_to_check = history_entry.parts
+             parts_to_check = history_entry
+        elif hasattr(history_entry, 'parts'):
+             parts_to_check = history_entry.parts
 
         text_parts = [
             part.text
-            for part in history_to_check
+            for part in parts_to_check
             if hasattr(part, "text") and part.text
         ]
         return "".join(text_parts)
@@ -60,6 +58,7 @@ def accumulate_response_stream(response_stream):
     except Exception as e:
         print(f"\n[bold red]Lỗi khi xử lý stream: {e}[/bold red]")
     return full_text, function_calls
+
 
 def print_formatted_history(console: Console, history: list):
     """In lịch sử trò chuyện đã tải ra màn hình."""
@@ -107,18 +106,38 @@ def serialize_history(history):
     return serializable
 
 
+def get_session_recreation_args(chat_session, args):
+    """Hàm trợ giúp để lấy các tham số cần thiết để tạo lại session."""
+    history_for_new_session = [c for c in chat_session.history if c.role != 'system']
+    cli_help_text = args.cli_help_text if args and hasattr(args, 'cli_help_text') else ""
+    
+    config = load_config()
+    saved_instructions = config.get("saved_instructions", [])
+    system_instruction_str = "\n".join(f"- {item}" for item in saved_instructions)
+    if args.system_instruction:
+        system_instruction_str = args.system_instruction
+    elif args.persona and config.get("personas", {}).get(args.persona):
+        system_instruction_str = config["personas"][args.persona]
+        
+    return system_instruction_str, history_for_new_session, cli_help_text
+
+
 def handle_conversation_turn(chat_session, prompt_parts, console: Console, model_name: str = None, args: argparse.Namespace = None):
     """
-    Xử lý một lượt hội thoại với spinner và in kết quả cuối cùng một lần.
+    Xử lý một lượt hội thoại với logic retry mạnh mẽ, ưu tiên xử lý lỗi model trước lỗi quota,
+    và xử lý xác nhận người dùng cho các tool đặc biệt.
     """
-    max_retries = len(api._api_keys) if api._api_keys else 1
+    FALLBACK_MODEL = "models/gemini-flash-latest"
     
-    for attempt in range(max_retries):
+    current_model_name = model_name
+    attempt_count = 0
+    max_attempts = len(api._api_keys)
+
+    while attempt_count < max_attempts:
         try:
             final_text_response = ""
             total_tokens = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
             
-            # Sử dụng spinner để cho người dùng biết AI đang làm việc
             with console.status("[bold green]AI đang suy nghĩ...[/bold green]", spinner="dots") as status:
                 response_stream = api.send_message(chat_session, prompt_parts)
                 text_chunk, function_calls = accumulate_response_stream(response_stream)
@@ -143,6 +162,7 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                         
                         status.update(f"[bold green]⚙️ Đang chạy tool [cyan]{tool_name}[/cyan]...[/bold green]")
                         
+                        result = ""
                         if tool_name in api.AVAILABLE_TOOLS:
                             try:
                                 tool_function = api.AVAILABLE_TOOLS[tool_name]
@@ -151,6 +171,30 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                                 result = f"Error executing tool '{tool_name}': {str(e)}"
                         else:
                             result = f"Error: Tool '{tool_name}' not found."
+                        
+                        # Xử lý trường hợp đặc biệt của write_file
+                        if isinstance(result, str) and result.startswith("USER_CONFIRMATION_REQUIRED:WRITE_FILE:"):
+                            status.stop() # Dừng spinner để người dùng có thể nhập
+                            file_path_to_write = result.split(":", 2)[2]
+                            
+                            console.print(f"[bold yellow]⚠️ AI muốn ghi vào file '{file_path_to_write}'. Nội dung sẽ được ghi đè nếu file tồn tại.[/bold yellow]")
+                            choice = console.input("Bạn có đồng ý không? [y/n]: ").lower()
+
+                            if choice == 'y':
+                                try:
+                                    content_to_write = tool_args.get('content', '')
+                                    parent_dir = os.path.dirname(file_path_to_write)
+                                    if parent_dir:
+                                        os.makedirs(parent_dir, exist_ok=True)
+                                    with open(file_path_to_write, 'w', encoding='utf-8') as f:
+                                        f.write(content_to_write)
+                                    result = f"Đã ghi thành công vào file '{file_path_to_write}'."
+                                except Exception as e:
+                                    result = f"Lỗi khi ghi file: {e}"
+                            else:
+                                result = "Người dùng đã từ chối hành động ghi file."
+                            
+                            status.start() # Khởi động lại spinner
                         
                         tool_responses.append({
                             "function_response": {
@@ -175,7 +219,6 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                     if text_chunk:
                         final_text_response += "\n" + text_chunk
 
-            # Sau khi spinner kết thúc, in kết quả cuối cùng
             output_format = args.format if args else 'rich'
             persona = args.persona if args else None
             display_text = final_text_response.strip()
@@ -188,42 +231,61 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
             else:
                 console.print(display_text)
 
-            token_limit = api.get_model_token_limit(model_name)
+            token_limit = api.get_model_token_limit(current_model_name)
             
             return final_text_response.strip(), total_tokens, token_limit
+        
+        except (ResourceExhausted, PermissionDenied, InvalidArgument) as e:
+            is_preview_model = "preview" in current_model_name or "exp" in current_model_name
             
-        except ResourceExhausted as e:
-            if attempt < max_retries - 1:
-                success, msg = api.switch_to_next_api_key()
-                if success:
-                    console.print(f"\n[yellow]⚠ Hết quota! Đã chuyển sang API {msg}. Đang thử lại...[/yellow]")
-                    
-                    system_instruction = chat_session.model.system_instruction
-                    system_instruction_text = None
-                    # Kiểm tra an toàn trước khi truy cập
-                    if system_instruction and hasattr(system_instruction, 'parts') and system_instruction.parts:
-                         system_instruction_text = system_instruction.parts.text
+            # ƯU TIÊN 1: Xử lý lỗi không có quyền truy cập model (bất kể loại lỗi là gì)
+            if is_preview_model:
+                console.print(f"[bold yellow]⚠️ Cảnh báo:[/bold yellow] Model thử nghiệm [cyan]'{current_model_name}'[/cyan] không thể truy cập.")
+                console.print(f"[green]🔄 Tự động chuyển sang model ổn định [cyan]'{FALLBACK_MODEL}'[/cyan] và thử lại...[/green]")
+                
+                current_model_name = FALLBACK_MODEL
+                args.model = FALLBACK_MODEL
+                
+                chat_session = api.start_chat_session(
+                    current_model_name, 
+                    *get_session_recreation_args(chat_session, args)
+                )
+                # Không tăng attempt_count, cho phép thử lại với model mới trên cùng 1 key
+                continue
 
-                    chat_session = api.start_chat_session(
-                        model_name, 
-                        system_instruction_text, 
-                        chat_session.history
-                    )
-                    continue
-                else:
-                    console.print(f"\n[bold red]❌ {msg}. Không thể tiếp tục.[/bold red]")
-                    raise
+            # ƯU TIÊN 2: Xử lý lỗi hết quota thông thường
+            elif isinstance(e, ResourceExhausted):
+                attempt_count += 1
+                if attempt_count < max_attempts:
+                    success, msg = api.switch_to_next_api_key()
+                    if success:
+                        console.print(f"\n[yellow]⚠ Hết quota! Đã chuyển sang API {msg}. Đang thử lại...[/yellow]")
+                        chat_session = api.start_chat_session(
+                            current_model_name, 
+                            *get_session_recreation_args(chat_session, args)
+                        )
+                        continue
+                # Nếu không thể chuyển key hoặc đã hết key, sẽ đi xuống cuối vòng lặp
+            
+            # ƯU TIÊN 3: Xử lý lỗi API key sai
+            elif "API key not valid" in str(e):
+                 console.print(f"[bold red]❌ Lỗi API Key:[/bold red] Key đang sử dụng không hợp lệ hoặc đã hết hạn.")
+                 break # Lỗi này không thể cứu vãn, thoát vòng lặp
+            
+            # Các lỗi khác không lường trước
             else:
-                console.print(f"\n[bold red]❌ Đã thử hết {max_retries} API key(s). Tất cả đều hết quota.[/bold red]")
-                raise
+                raise e
         except Exception as e:
             raise
+
+    # Xử lý khi vòng lặp kết thúc mà không thành công
+    if attempt_count >= max_attempts:
+        console.print(f"\n[bold red]❌ Đã thử hết {max_attempts} API key(s). Tất cả đều hết quota.[/bold red]")
     
     return "", {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}, 0
 
 
 def model_selection_wizard(console: Console, config: dict):
-    # This function remains unchanged
     console.print("[bold green]Đang lấy danh sách các model khả dụng...[/bold green]")
     try:
         models = api.get_available_models()
@@ -276,7 +338,6 @@ def model_selection_wizard(console: Console, config: dict):
 
 
 def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.Namespace):
-    # This function remains unchanged
     console.print("[bold green]Đã vào chế độ trò chuyện. Gõ 'exit' hoặc 'quit' để thoát.[/bold green]")
     initial_save_path = None
     if args.topic:
@@ -294,7 +355,7 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
             try:
                 response_text, token_usage, token_limit = handle_conversation_turn(
                     chat_session, [prompt], console, 
-                    model_name=config.get("default_model"),
+                    model_name=args.model or config.get("default_model"),
                     args=args
                 )
                 
@@ -354,10 +415,21 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                     console.print(
                         "[cyan]AI đang nghĩ tên cho cuộc trò chuyện...[/cyan]"
                     )
-                    first_user_prompt = get_response_text_from_history(
-                        chat_session.history
-                    )
-                    prompt_for_title = f"Dựa trên câu hỏi đầu tiên này: '{first_user_prompt}', hãy tạo một tiêu đề ngắn gọn (dưới 7 từ) cho cuộc trò chuyện. Chỉ trả về tiêu đề."
+                    
+                    first_user_prompt = "Initial conversation"
+                    first_ai_response = ""
+                    
+                    user_found = False
+                    for content in chat_session.history:
+                        if not user_found and content.role == 'user':
+                            first_user_prompt = get_response_text_from_history(content)
+                            user_found = True
+                        elif user_found and content.role == 'model':
+                            first_ai_response = get_response_text_from_history(content)
+                            break
+                    
+                    context_for_title = f"User's first question was: '{first_user_prompt}'. The AI's first response was: '{first_ai_response}'"
+                    prompt_for_title = f"Based on the following initial exchange, create a very short, descriptive title (under 7 words) for this conversation. Return only the title.\n\nContext:\n{context_for_title}"
 
                     title_chat = genai.GenerativeModel(
                         config.get("default_model")
@@ -386,7 +458,6 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                 console.print(f"\n[yellow]Không thể lưu lịch sử: {e}[/yellow]")
 
 def show_history_browser(console: Console):
-    # This function remains unchanged
     console.print(
         f"[bold green]Đang quét các file lịch sử trong `{HISTORY_DIR}/`...[/bold green]"
     )
@@ -453,7 +524,6 @@ def show_history_browser(console: Console):
 def handle_history_summary(
     console: Console, config: dict, history: list, cli_help_text: str
 ):
-    # This function remains unchanged
     console.print(
         "\n[bold yellow]Đang yêu cầu AI tóm tắt cuộc trò chuyện...[/bold yellow]"
     )
@@ -487,7 +557,7 @@ def handle_history_summary(
         )
 
         console.print("\n[bold green]📝 Tóm Tắt Cuộc Trò Chuyện:[/bold green] ")
-        handle_conversation_turn(chat_session, [prompt], console, args=argparse.Namespace(persona=None, format='rich'))
+        handle_conversation_turn(chat_session, [prompt], console, args=argparse.Namespace(persona=None, format='rich', cli_help_text=cli_help_text))
 
     except Exception as e:
         console.print(f"[bold red]Lỗi khi tóm tắt lịch sử: {e}[/bold red]")
@@ -495,7 +565,6 @@ def handle_history_summary(
 
 # --- Handlers for custom instructions ---
 def add_instruction(console: Console, config: dict, instruction: str):
-    # This function remains unchanged
     if "saved_instructions" not in config:
         config["saved_instructions"] = []
     if instruction not in config["saved_instructions"]:
@@ -509,7 +578,6 @@ def add_instruction(console: Console, config: dict, instruction: str):
 
 
 def list_instructions(console: Console, config: dict):
-    # This function remains unchanged
     instructions = config.get("saved_instructions", [])
     if not instructions:
         console.print("[yellow]Không có chỉ dẫn tùy chỉnh nào được lưu.[/yellow]")
@@ -524,7 +592,6 @@ def list_instructions(console: Console, config: dict):
 
 
 def remove_instruction(console: Console, config: dict, index: int):
-    # This function remains unchanged
     instructions = config.get("saved_instructions", [])
     if not 1 <= index <= len(instructions):
         console.print(
@@ -539,6 +606,7 @@ def remove_instruction(console: Console, config: dict, index: int):
         f"[bold green]✅ Đã xóa chỉ dẫn:[/bold green] '{removed_instruction}'"
     )
 
+# --- Handlers for persona ---
 def add_persona(console: Console, config: dict, name: str, instruction: str):
     """Thêm một persona mới vào config."""
     if "personas" not in config:
