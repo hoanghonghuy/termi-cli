@@ -95,15 +95,16 @@ Example of a CORRECT response:
 
 **ENDING THE TASK:**
 When you believe the user's objective is fully achieved, for your final action, use the special tool name "finish".
+**CRITICAL FORMATTING RULE:** When providing the final `answer` in the "finish" action, you **MUST** format it clearly using Markdown. For file contents or code snippets, always wrap them in appropriate Markdown code blocks (e.g., ```toml ... ``` or ```python ... ```) to preserve formatting.
 
 Example of a final response:
 ```json
 {{
-    "thought": "I have successfully listed the files and read the main.py content. I have gathered enough information to answer the user's question. I will now provide the final answer.",
+    "thought": "I have successfully listed the files and read the main.py content. I will now provide the final answer, ensuring the file content is in a code block.",
     "action": {{
         "tool_name": "finish",
         "tool_args": {{
-            "answer": "The project is a command-line AI assistant. Its main entry point is `src/main.py`..."
+            "answer": "The project's main entry point is `src/main.py`. Here is its content:\\n\\n```python\\n# main.py content...\\n```"
         }}
     }}
 }}
@@ -112,17 +113,6 @@ Example of a final response:
 Begin! The user's objective is your first prompt.
 """
     return instruction_template
-
-
-
-
-
-
-
-
-
-
-
 
 
 
