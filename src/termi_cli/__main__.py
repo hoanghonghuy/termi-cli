@@ -276,6 +276,7 @@ def main(provided_args=None):
         
         if history and args.print_log:
             handlers.print_formatted_history(console, history)
+            return
         
         # Chế độ chat
         if args.chat or args.topic:
