@@ -1,4 +1,4 @@
-from ..config import load_config, save_config
+from termi_cli.config import load_config, save_config
 
 def save_instruction(instruction: str) -> str:
     """

@@ -55,7 +55,7 @@ def build_agent_instruction() -> str:
     """
     Xây dựng system instruction đặc biệt cho chế độ Agent, theo mô hình ReAct.
     """
-    from . import api
+    from termi_cli import api
     tool_definitions = ""
     for func in api.AVAILABLE_TOOLS.values():
         tool_definitions += f"- `{func.__name__}`: {func.__doc__.strip().splitlines()[0]}\n"

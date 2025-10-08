@@ -1,5 +1,5 @@
 from sqlalchemy import create_engine, inspect, text
-from ..config import load_config
+from termi_cli.config import load_config
 
 def get_db_schema() -> str:
     """

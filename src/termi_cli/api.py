@@ -7,17 +7,16 @@ import google.generativeai as genai
 from rich.table import Table
 from rich.console import Console
 
-from .tools import web_search, database, calendar_tool, email_tool, file_system_tool, shell_tool
-from .tools import instruction_tool
-from .tools import code_tool
+from termi_cli.tools import web_search, database, calendar_tool, email_tool, file_system_tool, shell_tool
+from termi_cli.tools import instruction_tool
+from termi_cli.tools import code_tool
+from termi_cli.prompts import build_enhanced_instruction
 
 _current_api_key_index = 0
 _api_keys = []
 
 # Import các tool và prompt builder
-from .tools import web_search, database, calendar_tool, email_tool,file_system_tool
-from .tools import instruction_tool
-from .tools import code_tool
+
 from .prompts import build_enhanced_instruction
 
 

@@ -9,7 +9,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from PIL import Image
 
-from .tools import code_tool 
+from termi_cli.tools import code_tool
 
 # Context manager để tắt stderr tạm thời
 @contextlib.contextmanager
@@ -53,12 +53,12 @@ import logging as _logging
 import subprocess
 from dotenv import load_dotenv
 
-from . import api
-from . import utils
-from . import cli
-from . import handlers
-from .config import load_config
-from . import memory
+from termi_cli import api
+from termi_cli import utils
+from termi_cli import cli
+from termi_cli import handlers
+from termi_cli.config import load_config
+from termi_cli import memory
 
 _logging.basicConfig(level=_logging.ERROR)
 

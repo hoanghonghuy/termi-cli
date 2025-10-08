@@ -4,7 +4,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "cli-ai-gemini"
+name = "termi-cli"
 version = "1.0.0"
 authors = [
   { name="Hoang Hong Huy", email="huy.hoanghong.work@gmail.com" },
@@ -37,4 +37,4 @@ dev = [
 ]
 
 [project.scripts]
-gemini-cli = "src.main:main"
+termi= "termi_cli.__main__:main"

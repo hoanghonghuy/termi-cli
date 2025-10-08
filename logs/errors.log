@@ -1,0 +1,2 @@
+2025-10-08 21:01:57.894 | CRITICAL | termi_cli.main:main:425 - Unexpected error in main: module 'termi_cli.utils' has no attribute 'escape'
+

@@ -16,11 +16,11 @@ from google.api_core.exceptions import ResourceExhausted, PermissionDenied, Inva
 from rich.panel import Panel
 from rich.markup import escape
 
-from . import api
-from . import utils
-from .config import save_config, load_config
-from .prompts import build_agent_instruction
-from .tools import file_system_tool
+from termi_cli import api
+from termi_cli import utils
+from termi_cli.config import save_config, load_config
+from termi_cli.prompts import build_agent_instruction
+from termi_cli.tools import file_system_tool
 
 # --- CONSTANTS ---
 HISTORY_DIR = "chat_logs"

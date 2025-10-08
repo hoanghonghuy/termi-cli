@@ -1,6 +1,6 @@
 import datetime
 from googleapiclient.discovery import build
-from ..auth import get_credentials
+from termi_cli.auth import get_credentials
 
 def list_events(max_results: int = 10) -> str:
     """
