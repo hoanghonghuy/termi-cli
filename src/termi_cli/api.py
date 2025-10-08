@@ -1,4 +1,3 @@
-# src/api.py
 """
 Mô-đun này chịu trách nhiệm quản lý tương tác với API của Google Gemini.
 """

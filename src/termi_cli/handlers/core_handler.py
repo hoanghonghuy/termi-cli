@@ -1,5 +1,3 @@
-# src/termi_cli/handlers/core_handler.py
-
 """
 Module chứa logic cốt lõi để xử lý một lượt hội thoại với AI,
 bao gồm gọi tool, xử lý lỗi quota, và retry.

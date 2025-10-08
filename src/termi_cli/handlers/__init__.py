@@ -1,5 +1,3 @@
-# src/termi_cli/handlers/__init__.py
-
 """
 Package handler, giúp gom nhóm và export các hàm xử lý chính của ứng dụng.
 """

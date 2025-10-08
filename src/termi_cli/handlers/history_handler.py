@@ -1,5 +1,3 @@
-# src/termi_cli/handlers/history_handler.py
-
 """
 Module xử lý các tác vụ liên quan đến lịch sử trò chuyện,
 bao gồm hiển thị, tải, tóm tắt và lưu trữ.

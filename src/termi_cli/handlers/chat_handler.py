@@ -1,5 +1,3 @@
-# src/termi_cli/handlers/chat_handler.py
-
 """
 Module xử lý chế độ chat tương tác, bao gồm vòng lặp đọc input,
 gọi AI, hiển thị output và lưu lịch sử khi kết thúc.

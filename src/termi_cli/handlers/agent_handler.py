@@ -1,5 +1,3 @@
-# src/termi_cli/handlers/agent_handler.py
-
 """
 Module xử lý chế độ Agent tự trị, sử dụng mô hình ReAct (Reason + Act)
 để thực hiện các nhiệm vụ phức tạp.

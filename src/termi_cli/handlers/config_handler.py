@@ -1,5 +1,3 @@
-# src/termi_cli/handlers/config_handler.py
-
 """
 Module xử lý các tác vụ liên quan đến cấu hình của ứng dụng,
 bao gồm quản lý persona, custom instructions và lựa chọn model.
