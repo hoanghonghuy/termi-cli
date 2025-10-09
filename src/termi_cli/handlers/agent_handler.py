@@ -5,6 +5,7 @@ import os
 import json
 import re
 import argparse
+import time
 
 from rich.console import Console
 from rich.markdown import Markdown
@@ -116,6 +117,10 @@ def run_generative_agent_mode(console: Console, args: argparse.Namespace):
     for step in range(max_steps):
         console.print(f"\n[bold]--- Vòng {step + 1}/{max_steps} ---[/bold]")
         
+        if step > 0:
+            with console.status("[yellow]⏳ Tạm nghỉ để tuân thủ giới hạn API...[/yellow]", spinner="clock"):
+                time.sleep(31) # Chờ 31 giây cho API miễn phí (giới hạn 2 RPM)
+                
         # Xây dựng prompt động cho Executor
         dynamic_prompt = f"""
 Here is my scratchpad with the history of my work so far:
