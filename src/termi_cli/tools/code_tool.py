@@ -2,9 +2,9 @@
 Công cụ dành cho AI để tương tác với các file code,
 như đọc, tái cấu trúc, hoặc viết tài liệu.
 """
-
-import google.generativeai as genai # Sửa 'generai' thành 'generativeai'
+import google.generativeai as genai
 from termi_cli.config import load_config
+from termi_cli import api
 
 def _get_code_from_file(file_path: str) -> str | None:
     """Hàm trợ giúp để đọc nội dung file."""
@@ -30,7 +30,6 @@ def refactor_code(file_path: str) -> str:
         return code_content
 
     config = load_config()
-    # Model sẽ tự động sử dụng API key đã được configure trong main.py
     model = genai.GenerativeModel(config.get("default_model"))
     
     prompt = (
@@ -40,7 +39,8 @@ def refactor_code(file_path: str) -> str:
     )
     
     print("--- TOOL: Đang gửi yêu cầu tái cấu trúc tới AI ---")
-    response = model.generate_content(prompt)
+    # <-- SỬ DỤNG HÀM AN TOÀN -->
+    response = api.safe_generate_content(model, prompt)
     return response.text
 
 def document_code(file_path: str) -> str:
@@ -57,7 +57,6 @@ def document_code(file_path: str) -> str:
         return code_content
 
     config = load_config()
-    # Model sẽ tự động sử dụng API key đã được configure trong main.py
     model = genai.GenerativeModel(config.get("default_model"))
     
     prompt = (
@@ -68,5 +67,5 @@ def document_code(file_path: str) -> str:
     )
 
     print("--- TOOL: Đang gửi yêu cầu viết tài liệu tới AI ---")
-    response = model.generate_content(prompt)
+    response = api.safe_generate_content(model, prompt)
     return response.text

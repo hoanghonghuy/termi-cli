@@ -3,6 +3,12 @@ from pathlib import Path
 
 CONFIG_PATH = Path("config.json")
 
+MODEL_RPM_LIMITS = {
+    "models/gemini-2.5-pro": 2,
+    "models/gemini-pro-latest": 2,
+    "models/gemini-flash-latest": 15,
+}
+
 def load_config() -> dict:
     """Tải cấu hình từ file config.json."""
     config_data = {}

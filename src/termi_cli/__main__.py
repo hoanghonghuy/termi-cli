@@ -219,11 +219,7 @@ def main(provided_args=None):
                 console.print("[bold red]Lỗi: Chế độ Agent yêu cầu một mục tiêu (prompt).[/bold red]")
                 return
             
-            intent = agent_handler.classify_agent_intent(console, args)
-            if intent == "project":
-                agent_handler.run_generative_agent_mode(console, args)
-            else: # intent == "simple"
-                agent_handler.run_react_agent_mode(console, args)
+            agent_handler.run_master_agent(console, args)
             return
         
         # Xử lý các tool độc lập

@@ -10,7 +10,7 @@ from datetime import datetime
 import google.generativeai as genai
 from rich.console import Console
 
-from termi_cli import utils
+from termi_cli import utils, api
 from .core_handler import handle_conversation_turn, get_response_text_from_history
 from .history_handler import serialize_history, HISTORY_DIR
 
@@ -107,10 +107,9 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                         f"--- CONVERSATION ---\n{conversation_summary}"
                     )
 
-                    title_chat = genai.GenerativeModel(
-                        config.get("default_model")
-                    ).start_chat()
-                    response = title_chat.send_message(prompt_for_title)
+                    # <-- SỬ DỤNG HÀM AN TOÀN -->
+                    title_model = genai.GenerativeModel(config.get("default_model"))
+                    response = api.safe_generate_content(title_model, prompt_for_title)
                     title = response.text.strip().replace('"', "")
 
                 filename = f"chat_{utils.sanitize_filename(title)}.json"

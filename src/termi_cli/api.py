@@ -3,6 +3,8 @@ Mô-đun này chịu trách nhiệm quản lý tương tác với API của Goog
 """
 import os
 import google.generativeai as genai
+from rich import _console
+from rich.status import Status
 from rich.table import Table
 from rich.console import Console
 
@@ -11,8 +13,15 @@ from termi_cli.tools import instruction_tool
 from termi_cli.tools import code_tool
 from termi_cli.prompts import build_enhanced_instruction
 
+import time
+import re
+from rich.console import Console
+
+console = Console()
+
 _current_api_key_index = 0
 _api_keys = []
+_console = Console()
 
 # Import các tool và prompt builder
 
@@ -149,3 +158,16 @@ def switch_to_next_api_key():
         genai.configure(api_key=new_key)
         return True, f"Key #{_current_api_key_index + 1}"
     return False, "Hết API keys"
+
+def safe_generate_content(model: genai.GenerativeModel, prompt: str) -> genai.types.GenerateContentResponse:
+    """
+    Một hàm bọc cho model.generate_content. 
+    Nó sẽ ném ra exception ResourceExhausted để hàm gọi nó có thể xử lý.
+    Hàm này không tự retry, việc retry sẽ do logic cấp cao hơn (agent_handler) đảm nhiệm.
+    """
+    try:
+        response = model.generate_content(prompt)
+        return response
+    except Exception as e:
+        # Ném lại exception ra ngoài để hàm gọi xử lý
+        raise e

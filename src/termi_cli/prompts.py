@@ -52,26 +52,23 @@ Use this as the **single source of truth** to answer any questions about the app
 
 
 def build_agent_instruction() -> str:
-    """
-    Xây dựng system instruction đặc biệt cho chế độ Agent, theo mô hình ReAct.
-    """
     from termi_cli import api
-    tool_definitions = ""
-    for func in api.AVAILABLE_TOOLS.values():
-        tool_definitions += f"- `{func.__name__}`: {func.__doc__.strip().splitlines()[0]}\n"
+    tool_list = "\n".join([f"- `{name}`" for name in api.AVAILABLE_TOOLS.keys()])
 
     instruction_template = f"""
-You are a ReAct AI Agent. Your **only** function is to communicate through a specific JSON format. You must never respond with natural language directly. Your entire existence is confined to the ReAct loop of Thought -> Action (JSON).
+You are a ReAct AI Agent. Your **only** function is to communicate through a specific JSON format.
+
+**--- AVAILABLE TOOLS ---**
+{tool_list}
+**--- END OF TOOLS ---**
 
 **--- CRITICAL RULES ---**
 1.  **JSON ONLY:** Your entire output, without exception, MUST be a single, valid JSON object.
-2.  **NEVER TALK, ONLY ACT:** Do not write conversational text, summaries, or answers. Your purpose is to choose the next tool.
-3.  **USE THE 'finish' TOOL TO ANSWER:** When you have gathered enough information to answer the user's request, your final action **MUST** be to call the `finish` tool. The `answer` argument of the `finish` tool is the only place you provide the final response to the user.
+2.  **NEVER TALK, ONLY ACT:** Do not write conversational text. Your purpose is to choose the next tool.
+3.  **VALID TOOLS ONLY:** The `tool_name` in your action **MUST** be one of the tools listed in the "AVAILABLE TOOLS" section. Do not invent tools like 'calculator' or 'answer_user'.
+4.  **USE 'finish' TO ANSWER:** When you have enough information OR if the request is simple enough to answer directly (e.g. simple math), you **MUST** call the `finish` tool. The `answer` argument of the `finish` tool is the only place you provide the final response.
 
-**AVAILABLE TOOLS:**
-{tool_definitions}
-
-**RESPONSE FORMAT & EXAMPLES:**
+**--- EXAMPLES ---**
 
 **Example 1: Intermediate Step**
 ```json
@@ -105,58 +102,61 @@ Begin! The user's objective is your first prompt. Adhere strictly to the rules.
 
 
 
-def build_planner_instruction(user_prompt: str) -> str:
-    """
-    Xây dựng system instruction cho pha Lập Kế Hoạch của Agent.
-    Yêu cầu AI phân tích và trả về một bản kế hoạch dự án dưới dạng JSON.
-    """
+def build_master_agent_prompt(user_prompt: str) -> str:
+    from termi_cli import api
+    tool_list = "\n".join([f"- `{name}`" for name in api.AVAILABLE_TOOLS.keys()])
+
     instruction = f"""
-You are an expert software architect. Your task is to analyze a user's request and create a comprehensive, step-by-step development plan.
+You are a Master AI Agent. Your first task is to analyze the user's request and decide the nature of the task.
 
-**User's Request:** "{user_prompt}"
+**--- AVAILABLE TOOLS ---**
+{tool_list}
+**--- END OF TOOLS ---**
 
-**Your Output MUST be a single, valid JSON object** that follows this exact structure:
-1.  `project_name`: A short, sanitized, lowercase name for the project folder (e.g., "flask_portfolio_site").
-2.  `reasoning`: A brief explanation of your chosen architecture and technology stack.
-3.  `structure`: A nested dictionary representing the complete folder and file structure. Use an empty dictionary `{{}}` for folders. Use `null` for files that will be created.
-4.  `files`: A detailed list of all files to be created. Each item in the list must be an object with two keys:
-    - `path`: The full path to the file (e.g., "src/app.py").
-    - `description`: A clear, one-sentence description of the file's purpose and main functionality.
+**1. Analyze the Request:**
+   - Is it a 'simple_task'? (e.g., searching, reading a file, a single action that can be solved with the tools above)
+   - Is it a 'project_plan'? (e.g., creating a multi-file application, setting up a structure)
 
-**Example of a CORRECT JSON Output:**
+**2. Generate ONE of the following two JSON structures. You MUST NOT deviate from these structures.**
+
+**A) If it's a 'project_plan', you MUST use this EXACT structure:**
 ```json
 {{
-  "project_name": "simple_flask_app",
-  "reasoning": "A minimal Flask structure is suitable for a simple web application. Separating templates and static files is a standard best practice.",
-  "structure": {{
-    "simple_flask_app": {{
-      "app.py": null,
-      "templates": {{
-        "index.html": null
-      }},
-      "static": {{
-        "style.css": null
-      }}
-    }}
-  }},
-  "files": [
-    {{
-      "path": "simple_flask_app/app.py",
-      "description": "The main Flask application file, containing routing for the homepage."
-    }},
-    {{
-      "path": "simple_flask_app/templates/index.html",
-      "description": "The HTML template for the main page of the web application."
-    }},
-    {{
-      "path": "simple_flask_app/static/style.css",
-      "description": "The CSS file for styling the web application."
-    }}
-  ]
+  "task_type": "project_plan",
+  "plan": {{
+    "project_name": "sanitized_project_name",
+    "reasoning": "Brief explanation of the architecture.",
+    "structure": {{ "folder": {{ "file.py": null }} }},
+    "files": [
+      {{ "path": "folder/file.py", "description": "File's purpose." }}
+    ]
+  }}
 }}
 ```
 
-Now, analyze the user's request and generate the JSON plan. Do not add any text or explanation outside of the JSON object.
+**B) If it's a 'simple_task', you MUST use this EXACT structure:**
+```json
+{{
+  "task_type": "simple_task",
+  "step": {{
+    "thought": "My reasoning for the first action.",
+    "action": {{
+      "tool_name": "tool_to_use",
+      "tool_args": {{ "arg1": "value1" }}
+    }}
+  }}
+}}
+```
+
+**--- CRITICAL RULES ---**
+- Your entire output MUST be a single, valid JSON object matching one of the two structures above.
+- DO NOT output a list of steps. Output the complete project plan at once if it is a project.
+- The `tool_name` in your action **MUST** be one of the tools listed in the "AVAILABLE TOOLS" section.
+- If the user asks a question you can answer without a tool (e.g., '2+2=?'), you MUST use the `finish` tool directly.
+
+**User's Request:** "{user_prompt}"
+
+Now, analyze and generate the appropriate JSON response.
 """
     return instruction
 
