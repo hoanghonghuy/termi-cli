@@ -32,6 +32,7 @@ AVAILABLE_TOOLS = {
     file_system_tool.list_files.__name__: file_system_tool.list_files,
     file_system_tool.read_file.__name__: file_system_tool.read_file,
     file_system_tool.write_file.__name__: file_system_tool.write_file,
+    file_system_tool.create_directory.__name__: file_system_tool.create_directory,
     shell_tool.execute_command.__name__: shell_tool.execute_command,
 }
 

@@ -94,3 +94,16 @@ def write_file(path: str, content: str) -> str:
         return f"USER_CONFIRMATION_REQUIRED:WRITE_FILE:{path}"
     except Exception as e:
         return f"Lỗi khi chuẩn bị ghi file: {e}"
+    
+def create_directory(path: str) -> str:
+    """
+    Tạo một hoặc nhiều thư mục theo đường dẫn được chỉ định.
+    Args:
+        path (str): Đường dẫn thư mục cần tạo (ví dụ: 'src/components').
+    """
+    print(f"--- TOOL: Đang tạo thư mục '{path}' ---")
+    try:
+        os.makedirs(path, exist_ok=True)
+        return f"Thư mục '{path}' đã được tạo thành công."
+    except Exception as e:
+        return f"Lỗi khi tạo thư mục: {e}"

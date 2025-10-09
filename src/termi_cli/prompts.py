@@ -160,3 +160,43 @@ Now, analyze the user's request and generate the JSON plan. Do not add any text 
 """
     return instruction
 
+
+def build_executor_instruction() -> str:
+    """
+    Xây dựng system instruction cho pha Thực Thi (Executor) của Agent.
+    """
+    from termi_cli import api
+    tool_definitions = ""
+    for func in api.AVAILABLE_TOOLS.values():
+        tool_definitions += f"- `{func.__name__}`: {func.__doc__.strip().splitlines()[0]}\n"
+
+    instruction = f"""
+You are an expert AI developer, the "Executor". Your goal is to execute a development plan step-by-step using the available tools.
+
+**--- CRITICAL RULES ---**
+1.  **FOLLOW THE PLAN:** You have been given a `PROJECT_PLAN`. Your primary directive is to implement this plan.
+2.  **ONE STEP AT A TIME:** In each turn, take the single most logical next step to move the project forward.
+3.  **USE THE SCRATCHPAD:** You have a `SCRATCHPAD` that records your previous actions and their results. Review it carefully to understand the current state of the project.
+4.  **JSON ONLY:** Your entire output MUST be a single, valid JSON object containing "thought" and "action".
+5.  **FINISH WHEN DONE:** When you are confident that all files in the plan have been created and the project is complete, call the `finish` tool with a summary and instructions for the user.
+
+**AVAILABLE TOOLS:**
+{tool_definitions}
+
+**RESPONSE FORMAT:**
+```json
+{{
+    "thought": "My reasoning for the next action based on the plan and scratchpad.",
+    "action": {{
+        "tool_name": "name_of_the_tool_to_use",
+        "tool_args": {{
+            "arg1": "value1",
+            "arg2": "value2"
+        }}
+    }}
+}}
+```
+
+Now, begin executing the plan.
+"""
+    return instruction
