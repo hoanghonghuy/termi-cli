@@ -1,15 +1,21 @@
+# src/termi_cli/__main__.py
+
 import os
 import sys
 import io
 import contextlib
 import argparse
 import re
+import json
+import traceback
+import logging as _logging
+import subprocess
+
 from rich.markup import escape
 from rich.console import Console
 from rich.markdown import Markdown
 from PIL import Image
-
-from termi_cli.tools import code_tool
+from dotenv import load_dotenv
 
 # Context manager để tắt stderr tạm thời
 @contextlib.contextmanager
@@ -47,18 +53,17 @@ try:
 except (ImportError, AttributeError):
     pass
 
-import json
-import traceback
-import logging as _logging
-import subprocess
-from dotenv import load_dotenv
-
-from termi_cli import api
-from termi_cli import utils
-from termi_cli import cli
-from termi_cli import handlers
+# --- Import các module của ứng dụng ---
+from termi_cli import api, utils, cli, memory
 from termi_cli.config import load_config
-from termi_cli import memory
+from termi_cli.tools import code_tool
+from termi_cli.handlers import (
+    agent_handler,
+    chat_handler,
+    config_handler,
+    core_handler,
+    history_handler,
+)
 
 _logging.basicConfig(level=_logging.ERROR)
 
@@ -96,33 +101,33 @@ def main(provided_args=None):
 
         # Xử lý các lệnh quản lý
         if args.add_instruct:
-            handlers.add_instruction(console, config, args.add_instruct)
+            config_handler.add_instruction(console, config, args.add_instruct)
             return
         if args.list_instructs:
-            handlers.list_instructions(console, config)
+            config_handler.list_instructions(console, config)
             return
         if args.rm_instruct is not None:
-            handlers.remove_instruction(console, config, args.rm_instruct)
+            config_handler.remove_instruction(console, config, args.rm_instruct)
             return
         if args.add_persona:
-            handlers.add_persona(console, config, args.add_persona[0], args.add_persona[1])
+            config_handler.add_persona(console, config, args.add_persona[0], args.add_persona[1])
             return
         if args.list_personas:
-            handlers.list_personas(console, config)
+            config_handler.list_personas(console, config)
             return
         if args.rm_persona:
-            handlers.remove_persona(console, config, args.rm_persona)
+            config_handler.remove_persona(console, config, args.rm_persona)
             return
         
         if args.list_models:
             api.list_models(console)
             return
         if args.set_model:
-            handlers.model_selection_wizard(console, config)
+            config_handler.model_selection_wizard(console, config)
             return
         
         if args.history and not provided_args:
-            selected_file = handlers.show_history_browser(console)
+            selected_file = history_handler.show_history_browser(console)
             if selected_file:
                 action = ''
                 while action not in ['c', 's', 'q']:
@@ -185,7 +190,7 @@ def main(provided_args=None):
                 )
                 console.print("\n[dim]🤖 Đang yêu cầu AI viết commit message...[/dim]")
                 
-                commit_message, _, _, _ = handlers.handle_conversation_turn(
+                commit_message, _, _, _ = core_handler.handle_conversation_turn(
                     chat_session, prompt_parts, console, model_name=args.model, args=args
                 )
 
@@ -213,7 +218,12 @@ def main(provided_args=None):
             if not args.prompt:
                 console.print("[bold red]Lỗi: Chế độ Agent yêu cầu một mục tiêu (prompt).[/bold red]")
                 return
-            handlers.run_agent_mode(console, args)
+            
+            intent = agent_handler.classify_agent_intent(console, args)
+            if intent == "project":
+                agent_handler.run_generative_agent_mode(console, args)
+            else: # intent == "simple"
+                agent_handler.run_react_agent_mode(console, args)
             return
         
         # Xử lý các tool độc lập
@@ -271,17 +281,17 @@ def main(provided_args=None):
                 console.print(f"[yellow]Cảnh báo: Không tìm thấy file lịch sử '{args.load}'. Bắt đầu phiên mới.[/yellow]")
         
         if history and args.summarize:
-            handlers.handle_history_summary(console, config, history, cli_help_text)
+            history_handler.handle_history_summary(console, config, history, cli_help_text)
             return
         
         if history and args.print_log:
-            handlers.print_formatted_history(console, history)
+            history_handler.print_formatted_history(console, history)
             return
         
         # Chế độ chat
         if args.chat or args.topic:
             chat_session = api.start_chat_session(args.model, system_instruction_str, history, cli_help_text=cli_help_text)
-            handlers.run_chat_mode(chat_session, console, config, args)
+            chat_handler.run_chat_mode(chat_session, console, config, args)
             return
         
         # Xử lý input từ pipe
@@ -342,7 +352,7 @@ def main(provided_args=None):
         console.print("\n💡 [bold green]Phản hồi:[/bold green]")
         
         try:
-            final_response_text, token_usage, token_limit, tool_calls_log = handlers.handle_conversation_turn(
+            final_response_text, token_usage, token_limit, tool_calls_log = core_handler.handle_conversation_turn(
                 chat_session, prompt_parts, console, model_name=args.model, args=args
             )
             

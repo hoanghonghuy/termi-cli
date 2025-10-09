@@ -1,6 +1,5 @@
 """
-Module xử lý chế độ Agent tự trị, sử dụng mô hình ReAct (Reason + Act)
-để thực hiện các nhiệm vụ phức tạp.
+Module xử lý các chế độ Agent, bao gồm ReAct đơn giản và Agent tạo dự án phức tạp.
 """
 import os
 import json
@@ -10,19 +9,121 @@ import argparse
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.json import JSON
 
 from termi_cli import api
-from termi_cli.prompts import build_agent_instruction
+from termi_cli.prompts import build_agent_instruction, build_planner_instruction
+from termi_cli.config import load_config
 
-def run_agent_mode(console: Console, args: argparse.Namespace):
+def classify_agent_intent(console: Console, args: argparse.Namespace) -> str:
     """
-    Chạy chế độ Agent tự trị, quản lý vòng lặp ReAct và xử lý lỗi một cách độc lập.
+    Sử dụng LLM để phân loại yêu cầu của người dùng là 'simple' hay 'project'.
     """
-    console.print(Panel(f"[bold green]🤖 Chế Độ Agent Đã Kích Hoạt 🤖[/bold green]\n[yellow]Mục tiêu:[/yellow] {args.prompt}", border_style="blue"))
+    with console.status("[bold cyan]🧠 Phân loại yêu cầu của Agent...[/bold cyan]"):
+        try:
+            classification_prompt = f"""
+Analyze the user's request and determine if it's a 'simple task' or a 'project build'.
+- 'simple task': A single action or a short sequence of related actions (e.g., searching, reading/writing one file, running a command).
+- 'project build': Requires creating a multi-file structure, developing a cohesive application, or setting up a complete environment.
+
+Here are some examples:
+
+Request: "What is the capital of France?"
+Classification: simple
+
+Request: "Read the content of README.md and summarize it."
+Classification: simple
+
+Request: "Create a python script that takes a URL as an argument and downloads the image."
+Classification: project
+
+Request: "Build me a personal portfolio website using Flask and Bootstrap."
+Classification: project
+
+Request: "thời tiết ở hà nội hôm nay"
+Classification: simple
+
+Now, classify the following request:
+
+Request: "{args.prompt}"
+Classification:
+"""
+            config = load_config()
+            agent_model_name = config.get("agent_model", "models/gemini-pro-latest")
+            
+            # Sử dụng model agent để phân loại cho chính xác
+            model = api.genai.GenerativeModel(agent_model_name)
+            response = model.generate_content(classification_prompt)
+            
+            intent = response.text.strip().lower()
+            if "project" in intent:
+                console.print("[green]=> Yêu cầu được phân loại là 'Dự án', kích hoạt chế độ Kiến trúc sư.[/green]")
+                return "project"
+            else:
+                console.print("[green]=> Yêu cầu được phân loại là 'Tác vụ đơn giản', kích hoạt chế độ ReAct.[/green]")
+                return "simple"
+        except Exception as e:
+            console.print(f"[yellow]⚠️ Không thể phân loại yêu cầu, mặc định chạy chế độ ReAct đơn giản. Lỗi: {e}[/yellow]")
+            return "simple"
+
+
+def run_generative_agent_mode(console: Console, args: argparse.Namespace):
+    """
+    Chạy chế độ Agent tạo dự án (Planner + Executor).
+    Hiện tại chỉ triển khai bước Planner.
+    """
+    console.print(Panel(f"[bold green]🤖 Chế Độ Kiến Trúc Sư Đã Kích Hoạt 🤖[/bold green]\n[yellow]Mục tiêu:[/yellow] {args.prompt}", border_style="blue"))
+
+    # --- PHA 1: LẬP KẾ HOẠCH ---
+    with console.status("[bold cyan]📝 Agent đang phân tích và lập kế hoạch chi tiết cho dự án...[/bold cyan]"):
+        try:
+            planner_prompt = build_planner_instruction(args.prompt)
+            
+            config = load_config()
+            agent_model_name = config.get("agent_model", "models/gemini-pro-latest")
+            model = api.genai.GenerativeModel(agent_model_name) 
+            response = model.generate_content(planner_prompt)
+            
+            # Trích xuất JSON từ phản hồi
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', response.text, re.DOTALL)
+            if not json_match:
+                json_match = re.search(r'(\{.*?\})', response.text, re.DOTALL)
+
+            if not json_match:
+                console.print("[bold red]Lỗi: Planner không trả về một bản kế hoạch JSON hợp lệ.[/bold red]")
+                console.print(f"Phản hồi thô:\n{response.text}")
+                return
+
+            plan_str = json_match.group(1)
+            project_plan = json.loads(plan_str)
+
+        except json.JSONDecodeError as e:
+            console.print(f"[bold red]Lỗi khi phân tích kế hoạch JSON: {e}[/bold red]")
+            console.print(f"Chuỗi JSON lỗi:\n{plan_str}")
+            return
+        except Exception as e:
+            console.print(f"[bold red]Đã xảy ra lỗi trong pha lập kế hoạch: {e}[/bold red]")
+            return
+
+    console.print(Panel(JSON(plan_str), title="[bold green]📝 Kế Hoạch Dự Án Chi Tiết[/bold green]", border_style="green"))
+    console.print("\n[yellow]--- Hiện tại Agent chỉ dừng lại ở bước lập kế hoạch. Các bước thực thi sẽ được triển khai tiếp theo. ---[/yellow]")
+    
+    # TODO: Triển khai pha Executor (vòng lặp ReAct dựa trên kế hoạch) ở đây.
+
+
+def run_react_agent_mode(console: Console, args: argparse.Namespace):
+    """
+    Chạy chế độ Agent ReAct đơn giản cho các tác vụ nhỏ.
+    """
+    console.print(Panel(f"[bold green]🤖 Chế Độ ReAct Đã Kích Hoạt 🤖[/bold green]\n[yellow]Mục tiêu:[/yellow] {args.prompt}", border_style="blue"))
 
     agent_instruction = build_agent_instruction()
+    
+    config = load_config()
+    agent_model_name = config.get("agent_model", "models/gemini-pro-latest")
+    
     chat_session = api.start_chat_session(
-        model_name=args.model,
+        model_name=agent_model_name,
         system_instruction=agent_instruction
     )
 
@@ -40,7 +141,6 @@ def run_agent_mode(console: Console, args: argparse.Namespace):
                     response_text = ""
                     for chunk in response_stream:
                         if chunk.candidates:
-                            # SỬA LỖI Ở ĐÂY: Thêm [0] để truy cập candidate đầu tiên
                             for part in chunk.candidates[0].content.parts:
                                 if part.text:
                                     response_text += part.text
@@ -119,7 +219,7 @@ def run_agent_mode(console: Console, args: argparse.Namespace):
                     lang = file_extension if file_extension else "text"
                     display_content = Markdown(f"```{lang}\n{observation}\n```")
                 else:
-                    display_content = Markdown(str(observation)) # Đảm bảo observation là string
+                    display_content = Markdown(str(observation))
 
                 console.print(Panel(display_content, title="[bold blue]👀 Quan sát[/bold blue]", border_style="blue", expand=False))
                 
