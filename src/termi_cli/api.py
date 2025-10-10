@@ -1,32 +1,24 @@
 """
-Mô-đun này chịu trách nhiệm quản lý tương tác với API của Google Gemini.
+Mô-đun này chịu trách nhiệm quản lý tương tác với API của Google Gemini,
+bao gồm cả cơ chế xử lý lỗi Quota mạnh mẽ.
 """
 import os
+import time
+import re
 import google.generativeai as genai
-from rich import _console
-from rich.status import Status
+from google.api_core.exceptions import ResourceExhausted
 from rich.table import Table
 from rich.console import Console
 
+# Import các module con một cách an toàn
 from termi_cli.tools import web_search, database, calendar_tool, email_tool, file_system_tool, shell_tool
 from termi_cli.tools import instruction_tool
 from termi_cli.tools import code_tool
 from termi_cli.prompts import build_enhanced_instruction
 
-import time
-import re
-from rich.console import Console
-
-console = Console()
-
 _current_api_key_index = 0
 _api_keys = []
-_console = Console()
-
-# Import các tool và prompt builder
-
-from .prompts import build_enhanced_instruction
-
+_console = Console() # Console riêng cho module này
 
 # Ánh xạ tên tool tới hàm thực thi
 AVAILABLE_TOOLS = {
@@ -66,14 +58,13 @@ def list_models(console: Console):
     console.print(table)
 
 def start_chat_session(model_name: str, system_instruction: str = None, history: list = None, cli_help_text: str = ""):
-    """Khởi tạo chat session. Hàm này sẽ dựa vào cấu hình toàn cục."""
+    """Khởi tạo chat session."""
     enhanced_instruction = build_enhanced_instruction(cli_help_text)
     if system_instruction:
         enhanced_instruction = f"**PRIMARY DIRECTIVE (User-defined rules):**\n{system_instruction}\n\n---\n\n{enhanced_instruction}"
 
     tools_config = list(AVAILABLE_TOOLS.values())
     
-    # Gỡ bỏ hoàn toàn việc truyền key trực tiếp. Model sẽ tự lấy từ cấu hình toàn cục.
     model = genai.GenerativeModel(
         model_name, 
         system_instruction=enhanced_instruction,
@@ -82,13 +73,6 @@ def start_chat_session(model_name: str, system_instruction: str = None, history:
     
     chat = model.start_chat(history=history or [])
     return chat
-
-def send_message(chat_session: genai.ChatSession, prompt_parts: list):
-    """
-    Gửi message và trả về một generator để xử lý streaming.
-    """
-    response = chat_session.send_message(prompt_parts, stream=True)
-    return response
 
 def get_token_usage(response):
     """Trích xuất thông tin token usage từ response."""
@@ -104,7 +88,6 @@ def get_token_usage(response):
         pass
     return None
 
-
 def get_model_token_limit(model_name: str) -> int:
     """Lấy token limit của model."""
     try:
@@ -119,11 +102,11 @@ def get_model_token_limit(model_name: str) -> int:
         pass
     return 0
 
-
 def initialize_api_keys():
-    """Khởi tạo danh sách API keys từ .env"""
-    global _api_keys
+    """Khởi tạo danh sách API keys từ .env và reset trạng thái."""
+    global _api_keys, _current_api_key_index
     _api_keys = []
+    _current_api_key_index = 0
     
     primary = os.getenv("GOOGLE_API_KEY")
     if primary:
@@ -141,33 +124,63 @@ def initialize_api_keys():
     
     return _api_keys
 
-def get_current_api_key():
-    """Lấy API key hiện tại"""
+def _switch_to_next_api_key():
+    """Hàm nội bộ để chuyển sang API key tiếp theo và quay vòng."""
     global _current_api_key_index, _api_keys
-    if _current_api_key_index < len(_api_keys):
-        return _api_keys[_current_api_key_index]
-    return None
+    _current_api_key_index = (_current_api_key_index + 1) % len(_api_keys)
+    new_key = _api_keys[_current_api_key_index]
+    genai.configure(api_key=new_key)
+    return f"Key #{_current_api_key_index + 1}"
 
-def switch_to_next_api_key():
-    """Chuyển sang API key tiếp theo và gọi lại genai.configure()."""
-    global _current_api_key_index, _api_keys
-    _current_api_key_index += 1
-    if _current_api_key_index < len(_api_keys):
-        new_key = _api_keys[_current_api_key_index]
-        # Cập nhật lại cấu hình toàn cục
-        genai.configure(api_key=new_key)
-        return True, f"Key #{_current_api_key_index + 1}"
-    return False, "Hết API keys"
+def _resilient_api_call(api_function, *args, **kwargs):
+    """
+    Hàm bọc "bất tử" cho mọi lệnh gọi API, tự động xử lý lỗi Quota.
+    """
+    initial_key_index = _current_api_key_index
+    max_rpm_retries = 3 # Số lần thử lại tối đa cho lỗi RPM với CÙNG MỘT KEY
+    
+    while True:
+        rpm_retry_count = 0
+        try:
+            while rpm_retry_count < max_rpm_retries:
+                try:
+                    return api_function(*args, **kwargs)
+                except ResourceExhausted as e:
+                    error_message = str(e)
+                    if (match := re.search(r"Please retry in (\d+\.\d+)s", error_message)):
+                        rpm_retry_count += 1
+                        wait_time = float(match.group(1)) + 1
+                        with _console.status(f"[yellow]⏳ Lỗi tốc độ (RPM). Chờ {wait_time:.1f}s (thử lại {rpm_retry_count}/{max_rpm_retries})...[/yellow]", spinner="clock"):
+                            time.sleep(wait_time)
+                    else:
+                        raise e # Ném ra ngoài nếu không phải lỗi RPM
+            
+            # Nếu hết số lần thử lại RPM, ném lỗi ra để chuyển key
+            raise ResourceExhausted("Hết số lần thử lại cho lỗi RPM. Đang chuyển key.")
 
-def safe_generate_content(model: genai.GenerativeModel, prompt: str) -> genai.types.GenerateContentResponse:
-    """
-    Một hàm bọc cho model.generate_content. 
-    Nó sẽ ném ra exception ResourceExhausted để hàm gọi nó có thể xử lý.
-    Hàm này không tự retry, việc retry sẽ do logic cấp cao hơn (agent_handler) đảm nhiệm.
-    """
-    try:
-        response = model.generate_content(prompt)
-        return response
-    except Exception as e:
-        # Ném lại exception ra ngoài để hàm gọi xử lý
-        raise e
+        except ResourceExhausted as e:
+            _console.print(f"[yellow]⚠️ Gặp lỗi Quota với Key #{_current_api_key_index + 1}. Đang chuyển sang key tiếp theo...[/yellow]")
+            msg = _switch_to_next_api_key()
+
+            if _current_api_key_index == initial_key_index:
+                _console.print("[bold red]❌ Đã thử tất cả các API key nhưng đều gặp lỗi Quota.[/bold red]")
+                raise e
+            
+            _console.print(f"[green]✅ Đã chuyển sang {msg}. Thử lại...[/green]")
+            # Ném một exception đặc biệt để báo cho logic cấp cao hơn biết cần phải tái tạo session
+            raise RPDQuotaExhausted("API key changed.")
+
+        except Exception as e:
+            _console.print(f"[bold red]Lỗi không mong muốn khi gọi API: {e}[/bold red]")
+            raise e
+
+# Định nghĩa một exception tùy chỉnh
+class RPDQuotaExhausted(Exception):
+    pass
+
+# Các hàm public để gọi từ bên ngoài
+def resilient_generate_content(model: genai.GenerativeModel, prompt: str):
+    return _resilient_api_call(model.generate_content, prompt)
+
+def resilient_send_message(chat_session: genai.ChatSession, prompt):
+    return _resilient_api_call(chat_session.send_message, prompt)
