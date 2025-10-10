@@ -107,9 +107,8 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                         f"--- CONVERSATION ---\n{conversation_summary}"
                     )
 
-                    # <-- SỬ DỤNG HÀM AN TOÀN -->
                     title_model = genai.GenerativeModel(config.get("default_model"))
-                    response = api.safe_generate_content(title_model, prompt_for_title)
+                    response = api.resilient_generate_content(title_model, prompt_for_title)
                     title = response.text.strip().replace('"', "")
 
                 filename = f"chat_{utils.sanitize_filename(title)}.json"

@@ -8,7 +8,6 @@ def create_parser():
     )
     
     # --- Các đối số chính ---
-    parser.add_argument("prompt", nargs='?', default=None, help="Câu lệnh hỏi AI.")
     parser.add_argument("--chat", action="store_true", help="Bật chế độ chat tương tác.")
     parser.add_argument("--agent", action="store_true", help="Bật chế độ Agent tự trị để thực hiện các nhiệm vụ phức tạp.")
     
@@ -53,4 +52,6 @@ def create_parser():
     io_group.add_argument("-f", "--format", type=str, help="Định dạng output (mặc định: rich).")
     io_group.add_argument("-o", "--output", type=str, metavar="FILE_PATH", help="Lưu kết quả đầu ra vào một file thay vì in ra console.")
 
+    parser.add_argument("prompt", nargs='?', default=None, help="Câu lệnh hỏi AI (nên đặt ở cuối).")
+    
     return parser

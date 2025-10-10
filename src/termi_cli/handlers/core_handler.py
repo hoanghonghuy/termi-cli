@@ -1,6 +1,8 @@
+# src/termi_cli/handlers/core_handler.py
+
 """
 Module chứa logic cốt lõi để xử lý một lượt hội thoại với AI,
-bao gồm gọi tool, xử lý lỗi quota, và retry.
+bao gồm gọi tool, xử lý lỗi quota, và retry cho chế độ chat thông thường.
 """
 import os
 import json
@@ -97,21 +99,19 @@ def get_session_recreation_args(chat_session, args):
 
 def handle_conversation_turn(chat_session, prompt_parts, console: Console, model_name: str = None, args: argparse.Namespace = None):
     """
-    Xử lý một lượt hội thoại với logic retry mạnh mẽ, ưu tiên xử lý lỗi model trước lỗi quota.
+    Xử lý một lượt hội thoại với logic retry mạnh mẽ cho chế độ chat.
     """
-    FALLBACK_MODEL = "models/gemini-flash-latest"
-    
-    current_model_name = model_name
-    attempt_count = 0
     max_attempts = len(api._api_keys)
-    tool_calls_log = []
+    attempt_count = 0
 
     while attempt_count < max_attempts:
         try:
             final_text_response = ""
             total_tokens = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
+            tool_calls_log = []
             
             with console.status("[bold green]AI đang suy nghĩ...[/bold green]", spinner="dots") as status:
+                # Gọi hàm send_message gốc (có stream)
                 response_stream = api.send_message(chat_session, prompt_parts)
                 text_chunk, function_calls = accumulate_response_stream(response_stream)
                 
@@ -120,7 +120,7 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                     usage = api.get_token_usage(response_stream)
                     if usage:
                         for key in total_tokens:
-                            total_tokens[key] += usage[key]
+                            total_tokens[key] += usage.get(key, 0)
                 except Exception:
                     pass
                 
@@ -171,7 +171,7 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                         tool_calls_log.append({
                             "name": tool_name,
                             "args": tool_args,
-                            "result": str(result) # Chuyển kết quả thành chuỗi để đảm bảo an toàn
+                            "result": str(result)
                         })
                         
                         tool_responses.append({
@@ -190,7 +190,7 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                         usage = api.get_token_usage(response_stream)
                         if usage:
                             for key in total_tokens:
-                                total_tokens[key] += usage[key]
+                                total_tokens[key] += usage.get(key, 0)
                     except Exception:
                         pass
                     
@@ -198,63 +198,32 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
                         final_text_response += "\n" + text_chunk
 
             output_format = args.format if args else 'rich'
-            persona = args.persona if args else None
             display_text = final_text_response.strip()
-
-            if persona == 'python_dev' and display_text and not display_text.startswith('```'):
-                display_text = f"```python\n{display_text}\n```"
 
             if output_format == 'rich':
                 console.print(Markdown(display_text))
             else:
                 console.print(display_text)
 
-            token_limit = api.get_model_token_limit(current_model_name)
+            token_limit = api.get_model_token_limit(model_name)
             
             return final_text_response.strip(), total_tokens, token_limit, tool_calls_log
         
-        except (ResourceExhausted, PermissionDenied, InvalidArgument) as e:
-            is_preview_model = "preview" in current_model_name or "exp" in current_model_name
-            
-            if isinstance(e, PermissionDenied) or (is_preview_model and isinstance(e, (ResourceExhausted, InvalidArgument))):
-                if current_model_name == FALLBACK_MODEL:
-                    console.print(f"[bold red]❌ Lỗi nghiêm trọng:[/bold red] Ngay cả model dự phòng [cyan]'{FALLBACK_MODEL}'[/cyan] cũng không thể truy cập. Vui lòng kiểm tra lại API key.")
-                    break
-
-                console.print(f"[bold yellow]⚠️ Cảnh báo:[/bold yellow] Không có quyền truy cập model [cyan]'{current_model_name}'[/cyan].")
-                console.print(f"[green]🔄 Tự động chuyển sang model ổn định [cyan]'{FALLBACK_MODEL}'[/cyan] và thử lại...[/green]")
-                
-                current_model_name = FALLBACK_MODEL
-                args.model = FALLBACK_MODEL
-                
+        except ResourceExhausted as e:
+            attempt_count += 1
+            console.print(f"\n[yellow]⚠️ Gặp lỗi Quota. Đang thử chuyển sang key tiếp theo... ({attempt_count}/{max_attempts})[/yellow]")
+            success, msg = api.switch_to_next_api_key()
+            if success:
+                console.print(f"[green]✅ Đã chuyển sang {msg}. Đang tạo lại session...[/green]")
                 chat_session = api.start_chat_session(
-                    current_model_name, 
+                    model_name, 
                     *get_session_recreation_args(chat_session, args)
                 )
                 continue
-            
-            elif isinstance(e, ResourceExhausted):
-                attempt_count += 1
-                if attempt_count < max_attempts:
-                    success, msg = api.switch_to_next_api_key()
-                    if success:
-                        console.print(f"\n[yellow]⚠ Hết quota! Đã chuyển sang API {msg}. Đang thử lại...[/yellow]")
-                        chat_session = api.start_chat_session(
-                            current_model_name, 
-                            *get_session_recreation_args(chat_session, args)
-                        )
-                        continue
-                
-            elif "API key not valid" in str(e):
-                 console.print(f"[bold red]❌ Lỗi API Key:[/bold red] Key đang sử dụng không hợp lệ hoặc đã hết hạn.")
-                 break
-            
             else:
-                raise e
+                console.print(f"[bold red]❌ {msg}. Đã hết API keys.[/bold red]")
+                break
         except Exception as e:
             raise
 
-    if attempt_count >= max_attempts:
-        console.print(f"\n[bold red]❌ Đã thử hết {max_attempts} API key(s). Tất cả đều hết quota.[/bold red]")
-    
     return "", {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}, 0, []

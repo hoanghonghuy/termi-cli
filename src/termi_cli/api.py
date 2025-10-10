@@ -18,7 +18,7 @@ from termi_cli.prompts import build_enhanced_instruction
 
 _current_api_key_index = 0
 _api_keys = []
-_console = Console() # Console riêng cho module này
+_console = Console()
 
 # Ánh xạ tên tool tới hàm thực thi
 AVAILABLE_TOOLS = {
@@ -124,7 +124,7 @@ def initialize_api_keys():
     
     return _api_keys
 
-def _switch_to_next_api_key():
+def switch_to_next_api_key():
     """Hàm nội bộ để chuyển sang API key tiếp theo và quay vòng."""
     global _current_api_key_index, _api_keys
     _current_api_key_index = (_current_api_key_index + 1) % len(_api_keys)
@@ -132,12 +132,16 @@ def _switch_to_next_api_key():
     genai.configure(api_key=new_key)
     return f"Key #{_current_api_key_index + 1}"
 
+class RPDQuotaExhausted(Exception):
+    """Exception tùy chỉnh để báo hiệu cần tái tạo session."""
+    pass
+
 def _resilient_api_call(api_function, *args, **kwargs):
     """
     Hàm bọc "bất tử" cho mọi lệnh gọi API, tự động xử lý lỗi Quota.
     """
     initial_key_index = _current_api_key_index
-    max_rpm_retries = 3 # Số lần thử lại tối đa cho lỗi RPM với CÙNG MỘT KEY
+    max_rpm_retries = 3
     
     while True:
         rpm_retry_count = 0
@@ -147,40 +151,44 @@ def _resilient_api_call(api_function, *args, **kwargs):
                     return api_function(*args, **kwargs)
                 except ResourceExhausted as e:
                     error_message = str(e)
-                    if (match := re.search(r"Please retry in (\d+\.\d+)s", error_message)):
+                    if "free_tier_requests" in error_message or "daily" in error_message:
+                        raise e
+                    elif (match := re.search(r"Please retry in (\d+\.\d+)s", error_message)):
                         rpm_retry_count += 1
                         wait_time = float(match.group(1)) + 1
                         with _console.status(f"[yellow]⏳ Lỗi tốc độ (RPM). Chờ {wait_time:.1f}s (thử lại {rpm_retry_count}/{max_rpm_retries})...[/yellow]", spinner="clock"):
                             time.sleep(wait_time)
                     else:
-                        raise e # Ném ra ngoài nếu không phải lỗi RPM
+                        raise e
             
-            # Nếu hết số lần thử lại RPM, ném lỗi ra để chuyển key
             raise ResourceExhausted("Hết số lần thử lại cho lỗi RPM. Đang chuyển key.")
 
         except ResourceExhausted as e:
             _console.print(f"[yellow]⚠️ Gặp lỗi Quota với Key #{_current_api_key_index + 1}. Đang chuyển sang key tiếp theo...[/yellow]")
-            msg = _switch_to_next_api_key()
+            msg = switch_to_next_api_key()
 
             if _current_api_key_index == initial_key_index:
                 _console.print("[bold red]❌ Đã thử tất cả các API key nhưng đều gặp lỗi Quota.[/bold red]")
                 raise e
             
             _console.print(f"[green]✅ Đã chuyển sang {msg}. Thử lại...[/green]")
-            # Ném một exception đặc biệt để báo cho logic cấp cao hơn biết cần phải tái tạo session
             raise RPDQuotaExhausted("API key changed.")
 
         except Exception as e:
             _console.print(f"[bold red]Lỗi không mong muốn khi gọi API: {e}[/bold red]")
             raise e
 
-# Định nghĩa một exception tùy chỉnh
-class RPDQuotaExhausted(Exception):
-    pass
-
-# Các hàm public để gọi từ bên ngoài
 def resilient_generate_content(model: genai.GenerativeModel, prompt: str):
+    """Hàm gọi generate_content với cơ chế retry, dùng cho Agent và các tool."""
     return _resilient_api_call(model.generate_content, prompt)
 
 def resilient_send_message(chat_session: genai.ChatSession, prompt):
-    return _resilient_api_call(chat_session.send_message, prompt)
+    """Hàm gọi send_message với cơ chế retry, dùng cho Agent."""
+    try:
+        return _resilient_api_call(chat_session.send_message, prompt)
+    except RPDQuotaExhausted:
+        raise
+
+def send_message(chat_session: genai.ChatSession, prompt_parts: list):
+    """Hàm send_message gốc cho chế độ chat thông thường (có streaming)."""
+    return chat_session.send_message(prompt_parts, stream=True)

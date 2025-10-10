@@ -39,8 +39,7 @@ def refactor_code(file_path: str) -> str:
     )
     
     print("--- TOOL: Đang gửi yêu cầu tái cấu trúc tới AI ---")
-    # <-- SỬ DỤNG HÀM AN TOÀN -->
-    response = api.safe_generate_content(model, prompt)
+    response = api.resilient_generate_content(model, prompt)
     return response.text
 
 def document_code(file_path: str) -> str:
@@ -67,5 +66,5 @@ def document_code(file_path: str) -> str:
     )
 
     print("--- TOOL: Đang gửi yêu cầu viết tài liệu tới AI ---")
-    response = api.safe_generate_content(model, prompt)
+    response = api.resilient_generate_content(model, prompt)
     return response.text
