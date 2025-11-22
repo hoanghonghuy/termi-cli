@@ -102,6 +102,9 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "git_request_ai_commit_message": "\n[dim]\U0001f916 Đang yêu cầu AI viết commit message...[/dim]",
         "git_error_command": "[bold red]Lỗi khi chạy lệnh git: {error}[/bold red]",
         "git_unexpected_error": "[bold red]Đã xảy ra lỗi trong quá trình git-commit: {error}[/bold red]",
+        "git_commit_message_full_suggested": "\n[green]AI đã đề xuất commit message sau:[/green]\n[yellow]{message}[/yellow]",
+        "git_commit_message_short_suggested": "\n[green]AI đã đề xuất commit message ngắn:[/green]\n[yellow]{message}[/yellow]",
+        "git_commit_message_empty": "[yellow]AI không trả về commit message hợp lệ.[/yellow]",
 
         "code_file_not_found": "[bold red]Lỗi: File '{path}' không tồn tại.[/bold red]",
         "code_running_tool": "[bold green]\U0001f916 Đang {tool_name} cho file [cyan]{path}[/cyan]...[/bold green]",
@@ -146,6 +149,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "agent_react_unrecoverable_error": "[bold red]Lỗi trong khi thực thi bước ReAct: {error}[/bold red]",
         "agent_dry_run_mode_header": "[bold yellow]⚠️ Agent đang chạy ở chế độ DRY-RUN: sẽ không thực thi tool, ghi file hay lệnh shell thật.[/bold yellow]",
         "agent_dry_run_tool_observation": "DRY-RUN: Lẽ ra sẽ gọi tool `{tool_name}` với tham số {tool_args}, nhưng hiện chỉ mô phỏng kết quả.",
+        "agent_mode_label": "[dim]Chế độ: {mode}[/dim]",
+        "agent_session_summary": "[bold green]✅ Agent đã hoàn thành sau {steps} bước (dry-run: {flag}).[/bold green]",
     },
     "en": {
         # General errors & bootstrap
@@ -248,6 +253,9 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "git_request_ai_commit_message": "\n[dim]\U0001f916 Requesting AI to write a commit message...[/dim]",
         "git_error_command": "[bold red]Error while running git command: {error}[/bold red]",
         "git_unexpected_error": "[bold red]An error occurred during git-commit: {error}[/bold red]",
+        "git_commit_message_full_suggested": "\n[green]AI suggested the following commit message:[/green]\n[yellow]{message}[/yellow]",
+        "git_commit_message_short_suggested": "\n[green]AI suggested a short commit message:[/green]\n[yellow]{message}[/yellow]",
+        "git_commit_message_empty": "[yellow]AI did not return a valid commit message.[/yellow]",
 
         "code_file_not_found": "[bold red]Error: File '{path}' does not exist.[/bold red]",
         "code_running_tool": "[bold green]\U0001f916 Running {tool_name} for file [cyan]{path}[/cyan]...[/bold green]",
@@ -292,6 +300,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "agent_react_unrecoverable_error": "[bold red]Unrecoverable error while executing ReAct step: {error}[/bold red]",
         "agent_dry_run_mode_header": "[bold yellow]⚠️ Agent is running in DRY-RUN mode: no tools, file writes, or shell commands will actually be executed.[/bold yellow]",
         "agent_dry_run_tool_observation": "DRY-RUN: Would call tool `{tool_name}` with args {tool_args}, but only simulating the result.",
+        "agent_mode_label": "[dim]Mode: {mode}[/dim]",
+        "agent_session_summary": "[bold green]✅ Agent finished after {steps} step(s) (dry-run: {flag}).[/bold green]",
     },
 }
 

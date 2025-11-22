@@ -69,15 +69,24 @@ def main(provided_args=None):
         format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
     )
 
-    # Ghi log ra file ngoài console (trong thư mục ứng dụng cố định)
+    # Ghi log chi tiết ra file ngoài console (trong thư mục ứng dụng cố định),
+    # đồng thởi giảm độ ồn trên console chỉ còn WARNING trở lên.
     log_dir = os.path.join(APP_DIR, "logs")
     try:
         os.makedirs(log_dir, exist_ok=True)
+        root_logger = logging.getLogger()
+
+        # Thêm file handler ở mức DEBUG để lưu toàn bộ log vào file
         file_handler = logging.FileHandler(os.path.join(log_dir, "termi.log"), encoding="utf-8")
         file_handler.setLevel(logging.DEBUG)
         file_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s")
         file_handler.setFormatter(file_formatter)
-        logging.getLogger().addHandler(file_handler)
+        root_logger.addHandler(file_handler)
+
+        # Hạ level cho các StreamHandler (console) xuống WARNING để ẩn bớt log INFO
+        for handler in root_logger.handlers:
+            if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+                handler.setLevel(logging.WARNING)
     except Exception:
         # Không được để lỗi logging làm hỏng trải nghiệm CLI
         pass
@@ -101,7 +110,15 @@ def main(provided_args=None):
         # --- Cấu hình ban đầu ---
         args.model = args.model or config.get("default_model")
         args.format = args.format or config.get("default_format", "rich")
-        
+
+        # Cho phép xoá database trí nhớ dài hạn bằng một lệnh riêng
+        if getattr(args, "reset_memory", False):
+            if memory.reset_memory_db():
+                console.print("[green]✅ Đã xoá xong database trí nhớ dài hạn (memory_db).[/green]")
+            else:
+                console.print("[red]❌ Không thể xoá database trí nhớ dài hạn. Xem thêm chi tiết trong logs/termi.log.[/red]")
+            return
+
         keys = api.initialize_api_keys()
         if not keys:
             console.print(i18n.tr(language, "error_no_api_key")); return
@@ -266,25 +283,19 @@ def main(provided_args=None):
         console.print(f"\n[dim]🤖 Model: {args.model.replace('models/', '')}[/dim]")
         console.print("\n💡 [bold green]Phản hồi:[/bold green]")
         
-        final_response_text, token_usage, token_limit, tool_calls_log = core_handler.handle_conversation_turn(
+        final_response_text, _, _, tool_calls_log = core_handler.handle_conversation_turn(
             chat_session, prompt_parts, console, model_name=args.model, args=args
         )
         
         if user_intent and final_response_text:
-            memory.add_memory(user_intent, tool_calls_log, final_response_text)
-        
-        if token_usage and token_usage['total_tokens'] > 0:
-            if token_limit > 0:
-                remaining = token_limit - token_usage['total_tokens']
-                console.print(f"\n[dim]📊 Token: {token_usage['prompt_tokens']} + {token_usage['completion_tokens']} = {token_usage['total_tokens']:,} / {token_limit:,} ({remaining:,} còn lại)[/dim]")
-            else:
-                console.print(f"\n[dim]📊 Token: {token_usage['prompt_tokens']} + {token_usage['completion_tokens']} = {token_usage['total_tokens']:,} (total)[/dim]")
+            if memory.add_memory(user_intent, tool_calls_log, final_response_text):
+                console.print("[dim]💾 Đã lưu 1 lượt tương tác vào trí nhớ dài hạn.[/dim]")
         
         if args.output:
             with open(args.output, 'w', encoding='utf-8') as f:
                 f.write(final_response_text)
             console.print(i18n.tr(language, "file_saved_to", path=args.output))
-        
+
         utils.execute_suggested_commands(final_response_text, console)
 
     except KeyboardInterrupt:

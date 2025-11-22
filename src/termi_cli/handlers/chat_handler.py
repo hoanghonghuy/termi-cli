@@ -34,17 +34,11 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
             console.print("\n[bold magenta]AI:[/bold magenta]")
 
             try:
-                response_text, token_usage, token_limit, _ = handle_conversation_turn(
+                response_text, _, _, _ = handle_conversation_turn(
                     chat_session, [prompt], console, 
                     model_name=args.model or config.get("default_model"),
                     args=args
                 )
-                
-                if token_usage and token_usage['total_tokens'] > 0:
-                    if token_limit > 0:
-                        console.print(f"[dim] {token_usage['total_tokens']:,} / {token_limit:,} tokens[/dim]")
-                    else:
-                        console.print(f"[dim] {token_usage['total_tokens']:,} tokens[/dim]")
             except Exception as e:
                 console.print(i18n.tr(language, "chat_generic_error", error=e))
 

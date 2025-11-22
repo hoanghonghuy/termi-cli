@@ -115,13 +115,21 @@ def run_master_agent(console: Console, args: argparse.Namespace):
     """
     config = load_config()
     language = config.get("language", "vi")
+    dry_run = getattr(args, "agent_dry_run", False)
+    agent_model_name = config.get("agent_model", "models/gemini-pro-latest")
 
     header_body = i18n.tr(
         language,
         "agent_master_panel_body",
         goal=args.prompt,
     )
+
+    mode_name = "DRY-RUN" if dry_run else "Normal"
+    mode_label = i18n.tr(language, "agent_mode_label", mode=mode_name)
+    header_body = f"{header_body}\n\n{mode_label}"
+    
     console.print(Panel(header_body, border_style="blue"))
+    console.print(f"[dim]🤖 Model: {agent_model_name.replace('models/', '')} (Agent)[/dim]")
 
     initial_response = None
     
@@ -133,7 +141,8 @@ def run_master_agent(console: Console, args: argparse.Namespace):
             
             response = api.resilient_generate_content(model, master_prompt)
 
-            json_match = _extract_first_json_match(response.text)
+            raw_text = api.get_response_text(response)
+            json_match = _extract_first_json_match(raw_text)
             if not json_match:
                 raise ValueError("Agent không trả về JSON hợp lệ ban đầu.")
 
@@ -179,14 +188,6 @@ def _execute_tool(console: Console, tool_name: str, tool_args: dict, dry_run: bo
         raise ValueError(f"Agent tried to call a non-existent tool: {tool_name}")
     tool_function = api.AVAILABLE_TOOLS[tool_name]
     language = load_config().get("language", "vi")
-    console.print(
-        i18n.tr(
-            language,
-            "agent_tool_action",
-            tool_name=tool_name,
-            tool_args=tool_args,
-        )
-    )
 
     if dry_run:
         # Không thực thi tool thật, chỉ mô phỏng kết quả để an toàn.
@@ -241,14 +242,15 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
     max_steps = 30
 
     for step in range(max_steps):
-        console.print(
-            i18n.tr(
-                language,
-                "agent_iteration_header",
-                step=step + 1,
-                max_steps=max_steps,
-            )
+        iteration_header = i18n.tr(
+            language,
+            "agent_iteration_header",
+            step=step + 1,
+            max_steps=max_steps,
         )
+        if dry_run:
+            iteration_header = f"{iteration_header} (DRY-RUN)"
+        console.print(iteration_header)
 
         dynamic_prompt = f"<scratchpad>\n{scratchpad}\n</scratchpad>\nBased on the plan and my scratchpad, what is the single next action I should take?"
         
@@ -256,9 +258,10 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
             try:
                 response = api.resilient_send_message(chat_session, dynamic_prompt)
 
-                json_match = _extract_first_json_match(response.text)
+                raw_text = api.get_response_text(response)
+                json_match = _extract_first_json_match(raw_text)
                 if not json_match:
-                    raise ValueError(f"No valid JSON found. Raw response:\n{response.text}")
+                    raise ValueError("No valid JSON found.")
 
                 plan = json.loads(json_match.group(1))
                 thought = plan.get("thought", "")
@@ -285,6 +288,16 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
                             Markdown(final_answer),
                             title=i18n.tr(language, "agent_project_finished_title"),
                             border_style="green",
+                        )
+                    )
+
+                    flag = "có" if language == "vi" and dry_run else "không" if language == "vi" else ("yes" if dry_run else "no")
+                    console.print(
+                        i18n.tr(
+                            language,
+                            "agent_session_summary",
+                            steps=step + 1,
+                            flag=flag,
                         )
                     )
                     return
@@ -339,14 +352,15 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
     max_steps = 10
 
     for step in range(max_steps):
-        console.print(
-            i18n.tr(
-                language,
-                "agent_iteration_header",
-                step=step + 1,
-                max_steps=max_steps,
-            )
+        iteration_header = i18n.tr(
+            language,
+            "agent_iteration_header",
+            step=step + 1,
+            max_steps=max_steps,
         )
+        if dry_run:
+            iteration_header = f"{iteration_header} (DRY-RUN)"
+        console.print(iteration_header)
 
         # Xử lý bước đầu tiên đã có sẵn
         if step == 0:
@@ -357,9 +371,11 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
             while True:
                 try:
                     response = api.resilient_send_message(chat_session, next_prompt)
-                    json_match = _extract_first_json_match(response.text)
+                    raw_text = api.get_response_text(response)
+                    json_match = _extract_first_json_match(raw_text)
                     if not json_match:
-                        raise ValueError(f"No valid JSON found. Raw response:\n{response.text}")
+                        raise ValueError("No valid JSON found.")
+
                     current_step_json = json.loads(json_match.group(1))
                     thought = current_step_json.get("thought", "")
                     action = current_step_json.get("action", {})
@@ -381,7 +397,7 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
             console.print(
                 Panel(
                     Markdown(thought),
-                    title=i18n.tr(language, "agent_plan_title_panel"),
+                    title=i18n.tr(language, "agent_executor_thought_title"),
                     border_style="magenta",
                 )
             )
@@ -399,6 +415,16 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
                         Markdown(final_answer),
                         title=i18n.tr(language, "agent_simple_task_finished_title"),
                         border_style="green",
+                    )
+                )
+
+                flag = "có" if language == "vi" and dry_run else "không" if language == "vi" else ("yes" if dry_run else "no")
+                console.print(
+                    i18n.tr(
+                        language,
+                        "agent_session_summary",
+                        steps=step + 1,
+                        flag=flag,
                     )
                 )
                 return

@@ -23,6 +23,7 @@ from termi_cli.config import APP_DIR
 _current_api_key_index = 0
 _api_keys = []
 _console = Console()
+_last_free_tier_call_ts: float | None = None
 
 def _load_plugin_tools() -> dict[str, callable]:  # type: ignore[name-defined]
     """Tải thêm tools từ thư mục plugin `APP_DIR/plugins`.
@@ -138,6 +139,43 @@ def get_token_usage(response):
         pass
     return None
 
+def get_response_text(response) -> str:
+    """Trích xuất text từ một response Gemini, an toàn cho cả multi-part.
+
+    - Ưu tiên đọc qua `candidates[].content.parts` (cách chính thức).
+    - Fallback sang thuộc tính `.text` cho các đối tượng giả lập trong test.
+    """
+    if response is None:
+        return ""
+
+    # Thử lấy từ cấu trúc candidates/parts trước (multi-part, function_call, ...)
+    try:
+        if hasattr(response, "candidates") and response.candidates:
+            parts_text = []
+            for cand in response.candidates:
+                content = getattr(cand, "content", None)
+                if content is None:
+                    continue
+                for part in getattr(content, "parts", []) or []:
+                    if hasattr(part, "text") and part.text:
+                        parts_text.append(part.text)
+            if parts_text:
+                return "".join(parts_text)
+    except Exception:
+        # Nếu có lỗi, fallback xuống dưới
+        pass
+
+    # Fallback: dùng .text cho các response đơn giản hoặc object giả trong test
+    try:
+        text_attr = response.text  # type: ignore[attr-defined]
+    except Exception:
+        text_attr = None
+
+    if isinstance(text_attr, str):
+        return text_attr
+
+    return ""
+
 def get_model_token_limit(model_name: str) -> int:
     """Lấy token limit của model."""
     try:
@@ -187,6 +225,7 @@ class RPDQuotaExhausted(Exception):
     pass
 
 def _resilient_api_call(api_function, *args, **kwargs):
+
     """
     Hàm bọc "bất tử" cho mọi lệnh gọi API, tự động xử lý lỗi Quota.
     """
@@ -198,15 +237,43 @@ def _resilient_api_call(api_function, *args, **kwargs):
         try:
             while rpm_retry_count < max_rpm_retries:
                 try:
+                    # Throttle client-side: luôn cách nhau tối thiểu ~10 giây giữa các request
+                    global _last_free_tier_call_ts
+                    now = time.time()
+                    min_interval = 10.0
+
+                    # Khi chạy test (pytest), bỏ qua sleep để test không chậm
+                    is_pytest = "PYTEST_CURRENT_TEST" in os.environ
+
+                    if _last_free_tier_call_ts is not None and not is_pytest:
+                        elapsed = now - _last_free_tier_call_ts
+                        if elapsed < min_interval:
+                            wait_time = min_interval - elapsed
+                            with _console.status(
+                                f"[yellow]⏳ Throttle: chờ {wait_time:.1f}s trước khi gọi Gemini...[/yellow]",
+                                spinner="clock",
+                            ):
+                                time.sleep(wait_time)
+
+                    _last_free_tier_call_ts = time.time()
+
                     return api_function(*args, **kwargs)
+
                 except ResourceExhausted as e:
                     error_message = str(e)
+
+                    # Nếu thông báo cho biết đã hết quota free tier/ngày, không nên retry tiếp
                     if "free_tier_requests" in error_message or "daily" in error_message:
                         raise e
-                    elif (match := re.search(r"Please retry in (\d+\.\d+)s", error_message)):
+
+                    match = re.search(r"Please retry in (\d+\.\d+)s", error_message)
+                    if match:
                         rpm_retry_count += 1
                         wait_time = float(match.group(1)) + 1
-                        with _console.status(f"[yellow]⏳ Lỗi tốc độ (RPM). Chờ {wait_time:.1f}s (thử lại {rpm_retry_count}/{max_rpm_retries})...[/yellow]", spinner="clock"):
+                        with _console.status(
+                            f"[yellow]⏳ Lỗi tốc độ (RPM). Chờ {wait_time:.1f}s (thử lại {rpm_retry_count}/{max_rpm_retries})...[/yellow]",
+                            spinner="clock",
+                        ):
                             time.sleep(wait_time)
                     else:
                         raise e
@@ -214,6 +281,12 @@ def _resilient_api_call(api_function, *args, **kwargs):
             raise ResourceExhausted("Hết số lần thử lại cho lỗi RPM. Đang chuyển key.")
 
         except ResourceExhausted as e:
+            error_message = str(e)
+            # Nếu đã hết quota free tier trong ngày / tổng, không xoay key nữa.
+            if "free_tier_requests" in error_message or "daily" in error_message:
+                _console.print("[bold red]❌ Đã hết quota free tier (Requests Per Day / free_tier_requests). Hãy thử lại sau khi quota được reset.[/bold red]")
+                raise e
+
             _console.print(f"[yellow]⚠️ Gặp lỗi Quota với Key #{_current_api_key_index + 1}. Đang chuyển sang key tiếp theo...[/yellow]")
             msg = switch_to_next_api_key()
 
