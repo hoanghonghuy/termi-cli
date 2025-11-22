@@ -120,7 +120,12 @@ def main(provided_args=None):
         if args.add_instruct: config_handler.add_instruction(console, config, args.add_instruct); return
         if args.list_instructs: config_handler.list_instructions(console, config); return
         if args.rm_instruct is not None: config_handler.remove_instruction(console, config, args.rm_instruct); return
-        if args.git_commit: utility_handler.generate_git_commit_message(console, args); return
+        if args.git_commit or getattr(args, "git_commit_short", False):
+            utility_handler.generate_git_commit_message(
+                console,
+                args,
+                short=getattr(args, "git_commit_short", False),
+            ); return
         if args.document: utility_handler.document_code_file(console, args); return
         if args.refactor: utility_handler.refactor_code_file(console, args); return
 

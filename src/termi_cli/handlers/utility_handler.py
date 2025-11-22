@@ -12,7 +12,7 @@ from termi_cli import api, utils, i18n
 from termi_cli.config import load_config
 from termi_cli.tools import code_tool
 
-def generate_git_commit_message(console: Console, args: argparse.Namespace):
+def generate_git_commit_message(console: Console, args: argparse.Namespace, short: bool = False):
     # ... (Hàm này đã hoạt động tốt, giữ nguyên) ...
     language = "vi"
     try:
@@ -31,20 +31,35 @@ def generate_git_commit_message(console: Console, args: argparse.Namespace):
              console.print(i18n.tr(language, "git_no_staged_changes"))
              return
 
-        git_commit_system_instruction = (
-            "You are an expert at writing Conventional Commits. "
-            "Your task is to write a concise and meaningful commit message. "
-            "The message **MUST** follow this structure: "
-            "1. A subject line (type, optional scope, and description), under 50 characters. "
-            "2. A single blank line. "
-            "3. A detailed body explaining the 'why' behind the changes, with lines wrapped at 72 characters. "
-            "Respond with ONLY the raw commit message content. Do not include any other text, commands, or markdown formatting."
-        )
+        if short:
+            git_commit_system_instruction = (
+                "You are an expert at writing Conventional Commits. "
+                "Your task is to write ONLY a single-line commit subject (under 50 characters). "
+                "The line MUST be a valid Conventional Commit, for example: 'feat: add search'. "
+                "Do NOT include any body, bullet points, code blocks, quotes, or surrounding markdown. "
+                "Return ONLY the raw subject line."
+            )
 
-        prompt_text = (
-            "Based on the following `git diff --staged`, write a concise Conventional Commit message following the strict structure provided in the system instructions:\n\n"
-            f"```diff\n{staged_diff}\n```"
-        )
+            prompt_text = (
+                "Based on the following `git diff --staged`, write ONLY a single-line Conventional Commit subject, "
+                "following the system instructions.\n\n"
+                f"```diff\n{staged_diff}\n```"
+            )
+        else:
+            git_commit_system_instruction = (
+                "You are an expert at writing Conventional Commits. "
+                "Your task is to write a concise and meaningful commit message. "
+                "The message **MUST** follow this structure: "
+                "1. A subject line (type, optional scope, and description), under 50 characters. "
+                "2. A single blank line. "
+                "3. A detailed body explaining the 'why' behind the changes, with lines wrapped at 72 characters. "
+                "Respond with ONLY the raw commit message content. Do not include any other text, commands, or markdown formatting."
+            )
+
+            prompt_text = (
+                "Based on the following `git diff --staged`, write a concise Conventional Commit message following the strict structure provided in the system instructions:\n\n"
+                f"```diff\n{staged_diff}\n```"
+            )
         
         console.print(i18n.tr(language, "git_request_ai_commit_message"))
         
@@ -56,20 +71,30 @@ def generate_git_commit_message(console: Console, args: argparse.Namespace):
         commit_message = response.text.strip()
 
         if commit_message:
-            commit_file_path = "COMMIT_EDITMSG.tmp"
-            try:
-                with open(commit_file_path, "w", encoding="utf-8") as f:
-                    f.write(commit_message)
+            if short:
+                # Lấy dòng đầu tiên, tránh xuống dòng và ký tự quote gây lỗi shell
+                commit_subject = commit_message.splitlines()[0].strip().replace('"', "'")
+                commit_command = f'git commit -m "{commit_subject}"'
 
-                commit_command = f'git commit -F "{commit_file_path}"'
-                
-                console.print(f"\n[green]AI đã đề xuất commit message sau:[/green]\n[yellow]{commit_message}[/yellow]")
-                
+                console.print(f"\n[green]AI đã đề xuất commit message ngắn:[/green]\n[yellow]{commit_subject}[/yellow]")
+
                 fake_ai_response = f"```shell\n{commit_command}\n```"
                 utils.execute_suggested_commands(fake_ai_response, console)
-            finally:
-                if os.path.exists(commit_file_path):
-                    os.remove(commit_file_path)
+            else:
+                commit_file_path = "COMMIT_EDITMSG.tmp"
+                try:
+                    with open(commit_file_path, "w", encoding="utf-8") as f:
+                        f.write(commit_message)
+
+                    commit_command = f'git commit -F "{commit_file_path}"'
+                    
+                    console.print(f"\n[green]AI đã đề xuất commit message sau:[/green]\n[yellow]{commit_message}[/yellow]")
+                    
+                    fake_ai_response = f"```shell\n{commit_command}\n```"
+                    utils.execute_suggested_commands(fake_ai_response, console)
+                finally:
+                    if os.path.exists(commit_file_path):
+                        os.remove(commit_file_path)
 
     except subprocess.CalledProcessError as e:
         console.print(i18n.tr(language, "git_error_command", error=e.stderr or e.stdout))

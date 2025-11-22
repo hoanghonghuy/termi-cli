@@ -54,7 +54,8 @@ def create_parser():
 
     # --- Tích hợp & Tiện ích Code ---
     code_group = parser.add_argument_group('Tích hợp & Tiện ích Code')
-    code_group.add_argument("--git-commit", action="store_true", help="Tự động tạo commit message cho các thay đổi đã staged.")
+    code_group.add_argument("--git-commit", action="store_true", help="Tự động tạo commit message đầy đủ cho các thay đổi đã staged.")
+    code_group.add_argument("--git-commit-short", action="store_true", help="Tự động tạo commit message NGẮN một dòng (subject).")
     code_group.add_argument("--document", type=str, metavar="FILE_PATH", help="Tự động viết tài liệu (docstrings) cho code trong file.")
     code_group.add_argument("--refactor", type=str, metavar="FILE_PATH", help="Đề xuất các phương án tái cấu trúc code trong file.")
     
