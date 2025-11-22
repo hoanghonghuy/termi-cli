@@ -68,33 +68,36 @@ def generate_git_commit_message(console: Console, args: argparse.Namespace, shor
         model = api.genai.GenerativeModel(model_name, system_instruction=git_commit_system_instruction)
 
         response = api.resilient_generate_content(model, prompt_text)
-        commit_message = response.text.strip()
+        commit_message = (response.text or "").strip()
 
-        if commit_message:
-            if short:
-                # Lấy dòng đầu tiên, tránh xuống dòng và ký tự quote gây lỗi shell
-                commit_subject = commit_message.splitlines()[0].strip().replace('"', "'")
-                commit_command = f'git commit -m "{commit_subject}"'
+        if not commit_message:
+            console.print(i18n.tr(language, "git_commit_message_empty"))
+            return
 
-                console.print(f"\n[green]AI đã đề xuất commit message ngắn:[/green]\n[yellow]{commit_subject}[/yellow]")
+        if short:
+            # Lấy dòng đầu tiên, tránh xuống dòng và ký tự quote gây lỗi shell
+            commit_subject = commit_message.splitlines()[0].strip().replace('"', "'")
+            commit_command = f'git commit -m "{commit_subject}"'
 
+            console.print(i18n.tr(language, "git_commit_message_short_suggested", message=commit_subject))
+
+            fake_ai_response = f"```shell\n{commit_command}\n```"
+            utils.execute_suggested_commands(fake_ai_response, console)
+        else:
+            commit_file_path = "COMMIT_EDITMSG.tmp"
+            try:
+                with open(commit_file_path, "w", encoding="utf-8") as f:
+                    f.write(commit_message)
+
+                commit_command = f'git commit -F "{commit_file_path}"'
+                
+                console.print(i18n.tr(language, "git_commit_message_full_suggested", message=commit_message))
+                
                 fake_ai_response = f"```shell\n{commit_command}\n```"
                 utils.execute_suggested_commands(fake_ai_response, console)
-            else:
-                commit_file_path = "COMMIT_EDITMSG.tmp"
-                try:
-                    with open(commit_file_path, "w", encoding="utf-8") as f:
-                        f.write(commit_message)
-
-                    commit_command = f'git commit -F "{commit_file_path}"'
-                    
-                    console.print(f"\n[green]AI đã đề xuất commit message sau:[/green]\n[yellow]{commit_message}[/yellow]")
-                    
-                    fake_ai_response = f"```shell\n{commit_command}\n```"
-                    utils.execute_suggested_commands(fake_ai_response, console)
-                finally:
-                    if os.path.exists(commit_file_path):
-                        os.remove(commit_file_path)
+            finally:
+                if os.path.exists(commit_file_path):
+                    os.remove(commit_file_path)
 
     except subprocess.CalledProcessError as e:
         console.print(i18n.tr(language, "git_error_command", error=e.stderr or e.stdout))

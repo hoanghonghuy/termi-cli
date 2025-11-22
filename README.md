@@ -54,7 +54,22 @@ The main entry point is typically executed via `python src/main.py` or a configu
 | :--- | :--- |
 | `--document <FILE_PATH>` | Automatically generate docstrings and comments for the specified code file. |
 | `--refactor <FILE_PATH>` | Get AI-powered suggestions for restructuring and improving the code in the specified file. |
-| `--git-commit` | Generate a detailed Git commit message based on the currently staged changes. |
+| `--git-commit` | Generate a detailed Conventional Commit message (subject + body) based on the currently staged changes. The CLI writes the message to a temporary file and proposes a `git commit -F` command. |
+| `--git-commit-short` | Generate a short, single-line Conventional Commit subject based on the currently staged changes and propose a `git commit -m` command. |
+
+#### Example: AI-assisted Git commit
+
+You can let the CLI ask the AI to write commit messages for you. For example:
+
+```bash
+# Generate a full Conventional Commit (subject + body)
+termi --git-commit
+
+# Generate a short, single-line commit subject only
+termi --git-commit-short
+```
+
+In both cases, the CLI will show you the proposed `git commit` command and ask for confirmation before executing it.
 
 ### Customization & Context
 
