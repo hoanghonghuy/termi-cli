@@ -7,9 +7,6 @@ import json
 import argparse
 from datetime import datetime
 
-import argparse
-from datetime import datetime
-
 from rich.console import Console
 
 from termi_cli import utils, api, i18n
@@ -178,11 +175,19 @@ def run_chat_mode_deepseek(console: Console, config: dict, args: argparse.Namesp
             except (api.DeepseekInsufficientBalance, api.GroqInsufficientBalance) as e:
                 provider = "DeepSeek" if isinstance(e, api.DeepseekInsufficientBalance) else "Groq"
                 console.print(
-                    f"[bold red]{provider} báo lỗi Insufficient Balance. Không thể tiếp tục dùng {provider} cho phiên chat này.[/bold red]"
+                    i18n.tr(
+                        language,
+                        "http_insufficient_balance_chat",
+                        provider=provider,
+                    )
                 )
                 fallback_model = config.get("default_model")
                 console.print(
-                    f"[yellow]Đang chuyển tạm sang model Gemini '[cyan]{fallback_model}[/cyan]' cho phần còn lại của phiên chat.[/yellow]"
+                    i18n.tr(
+                        language,
+                        "http_switch_to_gemini_chat",
+                        fallback_model=fallback_model,
+                    )
                 )
 
                 from termi_cli.handlers.core_handler import build_system_instruction  # tránh import vòng

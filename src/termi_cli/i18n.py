@@ -12,6 +12,9 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "no_history_files_found": "[yellow]Không tìm thấy file lịch sử nào.[/yellow]",
         "history_browser_exit": "[yellow]Đã thoát trình duyệt lịch sử.[/yellow]",
         "memory_search_no_results": "[yellow]Không tìm thấy kết quả nào trong trí nhớ dài hạn cho truy vấn này.[/yellow]",
+        "memory_reset_success": "[green]Đã xoá xong database trí nhớ dài hạn (memory_db).[/green]",
+        "memory_reset_error": "[red]Không thể xoá database trí nhớ dài hạn. Xem thêm chi tiết trong logs/termi.log.[/red]",
+        "memory_saved_interaction": "[dim]💾 Đã lưu 1 lượt tương tác vào trí nhớ dài hạn.[/dim]",
 
         # __main__.py & history_handler.py
         "api_keys_loaded": "[dim]\U0001f511 Đã tải {count} API key(s)[/dim]",
@@ -27,6 +30,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "file_saved_to": "\n[bold green]\u2705 Đã lưu kết quả vào file: [cyan]{path}[/cyan][/bold green]",
         "interrupted_by_user": "\n[yellow]Đã dừng bởi người dùng.[/yellow]",
         "unexpected_startup_error": "[bold red]Đã xảy ra lỗi khởi động không mong muốn: {error}[/bold red]",
+        "http_insufficient_balance_single_turn": "[bold red]{provider} báo lỗi Insufficient Balance. Không thể dùng {provider} cho lượt hỏi này.[/bold red]",
+        "http_switch_to_gemini_single_turn": "[yellow]Đang chuyển tạm sang model Gemini '[cyan]{fallback_model}[/cyan]' cho lượt hỏi này.[/yellow]",
+        "http_insufficient_balance_chat": "[bold red]{provider} báo lỗi Insufficient Balance. Không thể tiếp tục dùng {provider} cho phiên chat này.[/bold red]",
+        "http_switch_to_gemini_chat": "[yellow]Đang chuyển tạm sang model Gemini '[cyan]{fallback_model}[/cyan]' cho phần còn lại của phiên chat.[/yellow]",
 
         # History browser & hiển thị lịch sử
         "history_scanning_files": "[bold green]Đang quét các file lịch sử trong `{dir}/`...[/bold green]",
@@ -192,6 +199,9 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "no_history_files_found": "[yellow]No history files found.[/yellow]",
         "history_browser_exit": "[yellow]Exited history browser.[/yellow]",
         "memory_search_no_results": "[yellow]No results found in long-term memory for this query.[/yellow]",
+        "memory_reset_success": "[green]Successfully reset the long-term memory database (memory_db).[/green]",
+        "memory_reset_error": "[red]Could not reset the long-term memory database. See logs/termi.log for details.[/red]",
+        "memory_saved_interaction": "[dim]💾 Saved 1 interaction to long-term memory.[/dim]",
 
         # __main__.py & history_handler.py
         "api_keys_loaded": "[dim]\U0001f511 Loaded {count} API key(s)[/dim]",
@@ -207,6 +217,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "file_saved_to": "\n[bold green]\u2705 Saved result to file: [cyan]{path}[/cyan][/bold green]",
         "interrupted_by_user": "\n[yellow]Interrupted by user.[/yellow]",
         "unexpected_startup_error": "[bold red]An unexpected startup error occurred: {error}[/bold red]",
+        "http_insufficient_balance_single_turn": "[bold red]{provider} reported Insufficient Balance. Cannot use {provider} for this request.[/bold red]",
+        "http_switch_to_gemini_single_turn": "[yellow]Temporarily switching to Gemini model '[cyan]{fallback_model}[/cyan]' for this request.[/yellow]",
+        "http_insufficient_balance_chat": "[bold red]{provider} reported Insufficient Balance. Cannot continue using {provider} for this chat session.[/bold red]",
+        "http_switch_to_gemini_chat": "[yellow]Temporarily switching to Gemini model '[cyan]{fallback_model}[/cyan]' for the rest of this chat session.[/yellow]",
 
         # History browser & view
         "history_scanning_files": "[bold green]Scanning history files in `{dir}/`...[/bold green]",
