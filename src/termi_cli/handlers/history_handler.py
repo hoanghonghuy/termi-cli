@@ -12,15 +12,17 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 
-from termi_cli import api
+from termi_cli import api, i18n
+from termi_cli.config import load_config, APP_DIR
 from .core_handler import handle_conversation_turn
 
 # --- CONSTANTS ---
-HISTORY_DIR = "chat_logs"
+HISTORY_DIR = str(APP_DIR / "chat_logs")
 
 def print_formatted_history(console: Console, history: list):
     """In lịch sử trò chuyện đã tải ra màn hình."""
-    console.print("\n--- [bold yellow]LỊCH SỬ TRÒ CHUYỆN[/bold yellow] ---")
+    language = load_config().get("language", "vi")
+    console.print(i18n.tr(language, "history_section_header"))
     for item in history:
         role = item.get("role", "unknown")
         text_parts = [p.get("text", "") for p in item.get("parts", []) if p.get("text")]
@@ -28,11 +30,11 @@ def print_formatted_history(console: Console, history: list):
         if not text:
             continue
         if role == "user":
-            console.print(f"\n[bold cyan]You:[/bold cyan] {text}")
+            console.print(f"\n{i18n.tr(language, 'history_user_label')} {text}")
         elif role == "model":
-            console.print(f"\n[bold magenta]AI:[/bold magenta]")
+            console.print(f"\n{i18n.tr(language, 'history_ai_label')}")
             console.print(Markdown(text))
-    console.print("\n--- [bold yellow]KẾT THÚC LỊCH SỬ[/bold yellow] ---\n")
+    console.print(i18n.tr(language, "history_section_footer"))
 
 
 def serialize_history(history):
@@ -65,18 +67,23 @@ def serialize_history(history):
 
 
 def show_history_browser(console: Console):
+    language = load_config().get("language", "vi")
     console.print(
-        f"[bold green]Đang quét các file lịch sử trong `{HISTORY_DIR}/`...[/bold green]"
+        i18n.tr(language, "history_scanning_files", dir=HISTORY_DIR)
     )
+
     if not os.path.exists(HISTORY_DIR):
         console.print(
-            f"[yellow]Thư mục '{HISTORY_DIR}' không tồn tại. Chưa có lịch sử nào được lưu.[/yellow]"
+            i18n.tr(language, "history_dir_missing", dir=HISTORY_DIR)
         )
         return None
+
     history_files = glob.glob(os.path.join(HISTORY_DIR, "*.json"))
+
     if not history_files:
-        console.print("[yellow]Không tìm thấy file lịch sử nào.[/yellow]")
+        console.print(i18n.tr(language, "no_history_files_found"))
         return None
+
     history_metadata = []
     for file_path in history_files:
         try:
@@ -97,10 +104,11 @@ def show_history_browser(console: Console):
         except Exception:
             continue
     history_metadata.sort(key=lambda x: x["last_modified"], reverse=True)
-    table = Table(title="📚 Lịch sử Trò chuyện")
-    table.add_column("#", style="cyan")
-    table.add_column("Chủ Đề Trò Chuyện", style="magenta")
-    table.add_column("Lần Cập Nhật Cuối", style="green")
+    table = Table(title=i18n.tr(language, "history_table_title"))
+    table.add_column(i18n.tr(language, "history_table_column_index"), style="cyan")
+    table.add_column(i18n.tr(language, "history_table_column_title"), style="magenta")
+    table.add_column(i18n.tr(language, "history_table_column_last_updated"), style="green")
+
     for i, meta in enumerate(history_metadata):
         mod_time_str = datetime.fromisoformat(meta["last_modified"]).strftime(
             "%Y-%m-%d %H:%M:%S"
@@ -109,32 +117,39 @@ def show_history_browser(console: Console):
     console.print(table)
     try:
         choice_str = console.input(
-            "Nhập số để tiếp tục cuộc trò chuyện (nhấn Enter để thoát): ",
+            i18n.tr(language, "history_select_prompt"),
             markup=False
         )
+
         if not choice_str:
-            console.print("[yellow]Đã thoát trình duyệt lịch sử.[/yellow]")
+            console.print(i18n.tr(language, "history_browser_exit"))
             return None
+
         choice = int(choice_str)
         if 1 <= choice <= len(history_metadata):
             selected_file = history_metadata[choice - 1]["file_path"]
             console.print(
-                f"\n[green]Đang tải lại cuộc trò chuyện: '{history_metadata[choice - 1]['title']}'...[/green]"
+                i18n.tr(language, "history_loading_selected", title=history_metadata[choice - 1]["title"])
             )
+
             return selected_file
         else:
-            console.print("[yellow]Lựa chọn không hợp lệ.[/yellow]")
+            console.print(i18n.tr(language, "history_invalid_choice"))
     except (ValueError, KeyboardInterrupt, EOFError):
-        console.print("\n[yellow]Đã thoát trình duyệt lịch sử.[/yellow]")
+        console.print(i18n.tr(language, "history_browser_exit"))
+
     return None
 
 
 def handle_history_summary(
     console: Console, config: dict, history: list, cli_help_text: str
 ):
+
+    language = config.get("language", "vi")
     console.print(
-        "\n[bold yellow]Đang yêu cầu AI tóm tắt cuộc trò chuyện...[/bold yellow]"
+        i18n.tr(language, "history_summary_start")
     )
+
     history_text = ""
     for item in history:
         role = "User" if item.get("role") == "user" else "AI"
@@ -145,7 +160,7 @@ def handle_history_summary(
             history_text += f"{role}: {text}\n"
 
     if not history_text:
-        console.print("[yellow]Lịch sử trống, không có gì để tóm tắt.[/yellow]")
+        console.print(i18n.tr(language, "no_history_to_summarize"))
         return
 
     prompt = (
@@ -164,8 +179,8 @@ def handle_history_summary(
             cli_help_text=cli_help_text,
         )
 
-        console.print("\n[bold green]📝 Tóm Tắt Cuộc Trò Chuyện:[/bold green] ")
+        console.print(i18n.tr(language, "history_summary_title"))
         handle_conversation_turn(chat_session, [prompt], console, args=argparse.Namespace(persona=None, format='rich', cli_help_text=cli_help_text))
 
     except Exception as e:
-        console.print(f"[bold red]Lỗi khi tóm tắt lịch sử: {e}[/bold red]")
+        console.print(i18n.tr(language, "error_history_summary", error=e))

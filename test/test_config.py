@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from src import config
+from termi_cli import config
 
 def test_load_and_save_config(tmp_path):
     """
@@ -26,9 +26,13 @@ def test_load_and_save_config(tmp_path):
         data_on_disk = json.load(f)
     assert data_on_disk["default_model"] == "gemini-test"
     
-    # 5. Tải lại config và so sánh
+    # 5. Tải lại config và so sánh các trường quan trọng
     loaded_config = config.load_config()
-    assert loaded_config == sample_config
+
+    # load_config sẽ merge thêm các giá trị mặc định, nên ta chỉ kiểm tra
+    # rằng các giá trị đã lưu được giữ nguyên
+    assert loaded_config["default_model"] == sample_config["default_model"]
+    assert loaded_config["personas"] == sample_config["personas"]
 
 def test_load_default_config_if_not_exists(tmp_path):
     """

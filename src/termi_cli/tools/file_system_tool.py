@@ -1,6 +1,9 @@
 import os
 import glob
+import logging
 from rich.console import Console
+
+logger = logging.getLogger(__name__)
 
 # Tạo một console riêng cho tool để tránh xung đột với spinner
 tool_console = Console()
@@ -26,7 +29,13 @@ def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False
         recursive (bool): Nếu True, sẽ tìm kiếm trong các thư mục con.
         read_content (bool): Nếu True, sẽ đọc nội dung của các file tìm thấy.
     """
-    print(f"--- TOOL: Liệt kê file trong '{directory}' với mẫu '{pattern}' (Read: {read_content}) ---")
+    logger.info(
+        "--- TOOL: Liệt kê file trong '%s' với mẫu '%s' (Read: %s) ---",
+        directory,
+        pattern,
+        read_content,
+    )
+
     try:
         search_path = os.path.join(directory, pattern)
         if recursive:
@@ -71,7 +80,8 @@ def read_file(path: str) -> str:
     """
     Đọc và trả về toàn bộ nội dung của một file văn bản.
     """
-    print(f"--- TOOL: Đọc file '{path}' ---")
+    logger.info("--- TOOL: Đọc file '%s' ---", path)
+
     try:
         with open(path, 'r', encoding='utf-8') as f:
             content = f.read()
@@ -85,7 +95,8 @@ def write_file(path: str, content: str) -> str:
     """
     Ghi nội dung vào một file. Sẽ hỏi người dùng xác nhận trước khi thực hiện.
     """
-    print(f"--- TOOL: Yêu cầu ghi file '{path}' ---")
+    logger.info("--- TOOL: Yêu cầu ghi file '%s' ---", path)
+
     try:
         # Không cần in ra đây nữa vì spinner đã dừng
         # tool_console.print(f"[bold yellow]⚠️ AI muốn ghi vào file '{path}'. Nội dung sẽ được ghi đè nếu file tồn tại.[/bold yellow]")
@@ -101,7 +112,8 @@ def create_directory(path: str) -> str:
     Args:
         path (str): Đường dẫn thư mục cần tạo (ví dụ: 'src/components').
     """
-    print(f"--- TOOL: Đang tạo thư mục '{path}' ---")
+    logger.info("--- TOOL: Đang tạo thư mục '%s' ---", path)
+
     try:
         os.makedirs(path, exist_ok=True)
         return f"Thư mục '{path}' đã được tạo thành công."

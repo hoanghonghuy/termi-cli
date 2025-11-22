@@ -1,8 +1,11 @@
 import os
 import time
+import logging
 import requests
 
-# Biến toàn cục để theo dõi thời gian request cuối cùng
+logger = logging.getLogger(__name__)
+
+# Biến toàn cục để theo dõi thởi gian request cuối cùng
 LAST_REQUEST_TIME = 0
 
 def search_web(query: str):
@@ -21,11 +24,11 @@ def search_web(query: str):
     
     if elapsed_since_last_request < 1.0:
         sleep_duration = 1.0 - elapsed_since_last_request
-        print(f"--- TOOL: Chờ {sleep_duration:.2f}s để tuân thủ giới hạn 1 request/giây ---")
+        logger.info("--- TOOL: Chờ %.2fs để tuân thủ giới hạn 1 request/giây ---", sleep_duration)
         time.sleep(sleep_duration)
     # --- Kết thúc logic Rate Limit ---
 
-    print(f"--- TOOL: Đang tìm kiếm Brave với từ khóa: '{query}' ---")
+    logger.info("--- TOOL: Đang tìm kiếm Brave với từ khóa: '%s' ---", query)
     
     try:
         api_key = os.getenv("BRAVE_API_KEY")
@@ -43,14 +46,14 @@ def search_web(query: str):
             "count": 5
         }
 
-        # Thực hiện request và cập nhật thời gian
+        # Thực hiện request và cập nhật thởi gian
         response = requests.get(
             "https://api.search.brave.com/res/v1/web/search",
             headers=headers,
             params=params,
             timeout=10
         )
-        LAST_REQUEST_TIME = time.time() # Cập nhật thời gian sau khi request hoàn tất
+        LAST_REQUEST_TIME = time.time() # Cập nhật thởi gian sau khi request hoàn tất
         response.raise_for_status()
 
         search_data = response.json()
@@ -73,12 +76,12 @@ def search_web(query: str):
         return results_str
 
     except requests.exceptions.RequestException as e:
-        LAST_REQUEST_TIME = time.time() # Cập nhật thời gian ngay cả khi có lỗi
+        LAST_REQUEST_TIME = time.time() # Cập nhật thởi gian ngay cả khi có lỗi
         error_msg = f"Lỗi mạng khi gọi Brave API: {str(e)}"
-        print(error_msg)
+        logger.error(error_msg)
         return error_msg
     except Exception as e:
-        LAST_REQUEST_TIME = time.time() # Cập nhật thời gian ngay cả khi có lỗi
+        LAST_REQUEST_TIME = time.time() # Cập nhật thởi gian ngay cả khi có lỗi
         error_msg = f"Lỗi không xác định khi tìm kiếm: {str(e)}"
-        print(error_msg)
+        logger.exception(error_msg)
         return error_msg

@@ -1,12 +1,15 @@
 from sqlalchemy import create_engine, inspect, text
+import logging
 from termi_cli.config import load_config
+
+logger = logging.getLogger(__name__)
 
 def get_db_schema() -> str:
     """
     Inspects the database and returns its schema (table names, columns, types).
     This provides context for the AI to write accurate queries.
     """
-    print("--- TOOL: Đang lấy schema của database ---")
+    logger.info("--- TOOL: Đang lấy schema của database ---")
     try:
         config = load_config()
         db_uri = config.get("database", {}).get("connection_string")
@@ -26,6 +29,7 @@ def get_db_schema() -> str:
             
         return "\n".join(schema_info)
     except Exception as e:
+        logger.exception("Error getting database schema")
         return f"Error getting database schema: {e}"
 
 def run_sql_query(query: str) -> str:
@@ -35,10 +39,16 @@ def run_sql_query(query: str) -> str:
     Args:
         query (str): The SQL SELECT statement to execute.
     """
-    print(f"--- TOOL: Đang thực thi truy vấn SQL: {query} ---")
-    
-    if not query.strip().upper().startswith("SELECT"):
+    logger.info("--- TOOL: Đang thực thi truy vấn SQL: %s ---", query)
+
+    raw_query = query.strip()
+    if not raw_query.upper().startswith("SELECT"):
         return "Error: For security reasons, only SELECT queries are allowed."
+
+    # Ngăn chặn multi-statement đơn giản bằng cách từ chối dấu chấm phẩy ở giữa câu lệnh
+    without_trailing_semicolons = raw_query.rstrip(";")
+    if ";" in without_trailing_semicolons:
+        return "Error: For security reasons, multi-statement queries are not allowed."
 
     try:
         config = load_config()
@@ -60,4 +70,5 @@ def run_sql_query(query: str) -> str:
                 result_str += " | ".join(map(str, row)) + "\n"
             return result_str
     except Exception as e:
+        logger.exception("Error executing SQL query")
         return f"Error executing SQL query: {e}"

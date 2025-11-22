@@ -1,5 +1,8 @@
 import subprocess
 import shlex
+import logging
+
+logger = logging.getLogger(__name__)
 
 # DANH SÁCH TRẮNG: Chỉ những lệnh này mới được phép thực thi
 SAFE_COMMANDS = {
@@ -14,13 +17,14 @@ SAFE_COMMANDS = {
     'pytest': None, # Cho phép chạy test
 }
 
-def execute_command(command: str) -> str:
+def execute_command(command: str, skip_confirm: bool = False) -> str:
     """
     Thực thi một lệnh shell an toàn từ danh sách trắng và trả về kết quả.
     Args:
         command (str): Lệnh cần thực thi (ví dụ: 'git status', 'pip install -r requirements.txt').
     """
-    print(f"--- TOOL: Yêu cầu thực thi lệnh: '{command}' ---")
+    logger.info("--- TOOL: Yêu cầu thực thi lệnh: '%s' ---", command)
+
     try:
         parts = shlex.split(command)
         if not parts:
@@ -38,6 +42,25 @@ def execute_command(command: str) -> str:
                  # Cho phép các flag đi kèm (ví dụ: pip install -r)
                 if not parts[1].startswith('-'):
                     return f"Lỗi: Lệnh con của '{main_command}' không được phép. Chỉ cho phép: {', '.join(allowed_subcommands)}."
+
+        # Xác định xem lệnh có side-effect cao hay không và yêu cầu xác nhận (trừ khi skip_confirm=True)
+        dangerous = False
+        if main_command in ("python", "python3"):
+            dangerous = True
+        elif main_command == "git" and len(parts) > 1 and not parts[1].startswith("-"):
+            if parts[1] in {"commit", "add", "init"}:
+                dangerous = True
+        elif main_command in ("pip", "npm") and len(parts) > 1 and not parts[1].startswith("-"):
+            if parts[1] == "install":
+                dangerous = True
+
+        if dangerous and not skip_confirm:
+            try:
+                choice = input(f"Lệnh '{command}' có thể thay đổi hệ thống (install/commit/chỉnh sửa). Thực thi? [y/N]: ").strip().lower()
+            except (EOFError, KeyboardInterrupt):
+                return "Lệnh đã bị hủy do không nhận được xác nhận từ người dùng."
+            if choice != "y":
+                return "Lệnh đã bị hủy bởi người dùng."
 
         result = subprocess.run(
             command, 

@@ -1,6 +1,6 @@
 import os
 from unittest.mock import MagicMock
-from src import api
+from termi_cli import api
 
 def test_initialize_api_keys(mocker):
     """

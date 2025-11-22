@@ -10,14 +10,27 @@ def create_parser():
     # --- Các đối số chính ---
     parser.add_argument("--chat", action="store_true", help="Bật chế độ chat tương tác.")
     parser.add_argument("--agent", action="store_true", help="Bật chế độ Agent tự trị để thực hiện các nhiệm vụ phức tạp.")
+    parser.add_argument(
+        "--agent-dry-run",
+        action="store_true",
+        help="Chạy Agent ở chế độ dry-run (chỉ lập kế hoạch và mô phỏng tool, không thực thi lệnh thật).",
+    )
     
     # --- Cấu hình Model & AI ---
     model_group = parser.add_argument_group('Cấu hình Model & AI')
     model_group.add_argument("--list-models", action="store_true", help="Liệt kê các model khả dụng.")
     model_group.add_argument("--set-model", action="store_true", help="Chạy giao diện để chọn model mặc định.")
-    model_group.add_argument("-m", "--model", type=str, help="Chọn model cho phiên này (ghi đè tạm thời).")
+    model_group.add_argument("-m", "--model", type=str, help="Chọn model cho phiên này (ghi đè tạm thởi).")
     model_group.add_argument("-p", "--persona", type=str, help="Chọn một persona (tính cách) đã định nghĩa trong config.")
     model_group.add_argument("-si", "--system-instruction", type=str, help="Ghi đè chỉ dẫn hệ thống cho phiên này.")
+    model_group.add_argument(
+        "--lang",
+        "--language",
+        dest="language",
+        type=str,
+        choices=["vi", "en"],
+        help="Chọn ngôn ngữ giao diện cho phiên này (override tạm thởi config.language).",
+    )
     
     # --- Quản lý Persona ---
     persona_group = parser.add_argument_group('Quản lý Persona')

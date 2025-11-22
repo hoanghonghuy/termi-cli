@@ -3,31 +3,51 @@ from chromadb.config import Settings
 import time
 import os
 import shutil
+import logging
 
-DB_PATH = "memory_db"
+from termi_cli.config import APP_DIR
+
+DB_PATH = str(APP_DIR / "memory_db")
+
+logger = logging.getLogger(__name__)
 
 try:
+    os.makedirs(DB_PATH, exist_ok=True)
     client = chromadb.PersistentClient(
         path=DB_PATH,
         settings=Settings(anonymized_telemetry=False)
     )
     collection = client.get_or_create_collection(name="long_term_memory")
 except Exception as e:
-    print(f"--- MEMORY WARNING: Không thể khởi tạo database tại '{DB_PATH}'. Lỗi: {e} ---")
-    print(f"--- MEMORY WARNING: Có thể database đã bị hỏng. Đang thử tạo lại... ---")
+    logger.warning(
+        "--- MEMORY WARNING: Không thể khởi tạo database tại '%s'. Lỗi: %s ---",
+        DB_PATH,
+        e,
+    )
+    logger.warning(
+        "--- MEMORY WARNING: Có thể database đã bị hỏng. Đang thử tạo lại... ---"
+    )
+
     try:
         corrupted_db_path = f"{DB_PATH}_corrupted_{int(time.time())}"
         shutil.move(DB_PATH, corrupted_db_path)
-        print(f"--- MEMORY WARNING: Đã đổi tên thư mục DB hỏng thành '{corrupted_db_path}'. ---")
-        
+        logger.warning(
+            "--- MEMORY WARNING: Đã đổi tên thư mục DB hỏng thành '%s'. ---",
+            corrupted_db_path,
+        )
+
         client = chromadb.PersistentClient(
             path=DB_PATH,
             settings=Settings(anonymized_telemetry=False)
         )
         collection = client.get_or_create_collection(name="long_term_memory")
-        print("--- MEMORY: Đã tạo lại database trí nhớ thành công. ---")
+        logger.info("--- MEMORY: Đã tạo lại database trí nhớ thành công. ---")
     except Exception as final_e:
-        print(f"--- MEMORY CRITICAL ERROR: Không thể tạo lại database. Trí nhớ sẽ bị vô hiệu hóa. Lỗi: {final_e} ---")
+        logger.error(
+            "--- MEMORY CRITICAL ERROR: Không thể tạo lại database. Trí nhớ sẽ bị vô hiệu hóa. Lỗi: %s ---",
+            final_e,
+        )
+
         def add_memory(*args, **kwargs): pass
         def search_memory(*args, **kwargs): return ""
 
@@ -46,7 +66,7 @@ def add_memory(user_intent: str, tool_calls_log: list, final_response: str):
     try:
         # Xây dựng một "tài liệu" hoàn chỉnh mô tả toàn bộ lượt tương tác
         document = f"User's intent was: {user_intent}\n"
-        
+
         if tool_calls_log:
             document += "The AI performed the following actions:\n"
             for log in tool_calls_log:
@@ -54,18 +74,18 @@ def add_memory(user_intent: str, tool_calls_log: list, final_response: str):
                 # Chỉ hiển thị một phần kết quả của tool để tránh làm document quá dài
                 tool_result_snippet = (log['result'][:200] + '...') if len(log['result']) > 200 else log['result']
                 document += f"  - Tool returned: {tool_result_snippet}\n"
-        
+
         document += f"Finally, the AI responded: {final_response}"
-        
+
         doc_id = str(time.time())
-        
+
         collection.add(
             documents=[document],
             ids=[doc_id]
         )
-        print(f"--- MEMORY: Đã ghi nhớ 1 lượt tương tác hoàn chỉnh. ---")
+        logger.info("--- MEMORY: Đã ghi nhớ 1 lượt tương tác hoàn chỉnh. ---")
     except Exception as e:
-        print(f"--- MEMORY ERROR: Không thể ghi nhớ: {e} ---")
+        logger.error("--- MEMORY ERROR: Không thể ghi nhớ: %s ---", e)
 
 def search_memory(query: str, n_results: int = 2) -> str:
     """
@@ -76,15 +96,15 @@ def search_memory(query: str, n_results: int = 2) -> str:
             query_texts=[query],
             n_results=n_results
         )
-        
+
         documents = results.get('documents', [[]])[0]
         if not documents:
             return ""
-            
+
         context = "### Relevant Past Interactions (from Long-Term Memory):\n"
         for doc in documents:
             context += f"---\n{doc}\n"
         return context
     except Exception as e:
-        print(f"--- MEMORY ERROR: Không thể tìm kiếm: {e} ---")
+        logger.error("--- MEMORY ERROR: Không thể tìm kiếm: %s ---", e)
         return ""

@@ -45,10 +45,7 @@ Use this as the **single source of truth** to answer any questions about the app
 
 - Be direct, proactive, and helpful.
 """
-    return instruction_template.format(
-        current_datetime=current_datetime,
-        cli_help_text=cli_help_text
-    )
+    return instruction_template
 
 
 def build_agent_instruction() -> str:

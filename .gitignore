@@ -18,6 +18,7 @@ __pycache__/
 # File database
 *.db
 *.sqlite3
+memory_db_corrupted_*/
 
 # Lịch sử trò chuyện
 *.json
@@ -33,3 +34,9 @@ __pycache__/
 
 /memory_db/
 memory_db/
+
+# Thư mục và file runtime
+.pytest_cache/
+htmlcov/
+logs/
+COMMIT_EDITMSG.tmp

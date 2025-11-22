@@ -4,19 +4,24 @@
 Module chứa logic cốt lõi để xử lý một lượt hội thoại với AI,
 bao gồm gọi tool, xử lý lỗi quota, và retry cho chế độ chat thông thường.
 """
+
 import os
 import json
 import re
 import argparse
 from collections import namedtuple
+import logging
 
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
 from google.api_core.exceptions import ResourceExhausted, PermissionDenied, InvalidArgument
 
-from termi_cli import api
+from termi_cli import api, i18n
 from termi_cli.config import load_config
+
+
+logger = logging.getLogger(__name__)
 
 
 def get_response_text_from_history(history_entry):
@@ -76,9 +81,22 @@ def accumulate_response_stream(response_stream):
                                 full_text += part.text
                         except json.JSONDecodeError:
                             full_text += part.text
-    except Exception as e:
-        print(f"\n[bold red]Lỗi khi xử lý stream: {e}[/bold red]")
+    except Exception:
+        logger.exception("Lỗi khi xử lý stream")
     return full_text, function_calls
+
+
+def build_system_instruction(config, args):
+    """Xây dựng system instruction dựa trên config và tham số dòng lệnh."""
+    saved_instructions = config.get("saved_instructions", [])
+    system_instruction_str = "\n".join(f"- {item}" for item in saved_instructions)
+
+    if args and getattr(args, "system_instruction", None):
+        system_instruction_str = args.system_instruction
+    elif args and getattr(args, "persona", None) and config.get("personas", {}).get(args.persona):
+        system_instruction_str = config["personas"][args.persona]
+
+    return system_instruction_str
 
 
 def get_session_recreation_args(chat_session, args):
@@ -87,14 +105,98 @@ def get_session_recreation_args(chat_session, args):
     cli_help_text = args.cli_help_text if args and hasattr(args, 'cli_help_text') else ""
     
     config = load_config()
-    saved_instructions = config.get("saved_instructions", [])
-    system_instruction_str = "\n".join(f"- {item}" for item in saved_instructions)
-    if args.system_instruction:
-        system_instruction_str = args.system_instruction
-    elif args.persona and config.get("personas", {}).get(args.persona):
-        system_instruction_str = config["personas"][args.persona]
-        
+    system_instruction_str = build_system_instruction(config, args)
     return system_instruction_str, history_for_new_session, cli_help_text
+
+
+def confirm_and_write_file(console: Console, file_path_to_write: str, content_to_write: str) -> str:
+    """Hiển thị cảnh báo, hỏi xác nhận và ghi nội dung vào file nếu người dùng đồng ý."""
+    language = load_config().get("language", "vi")
+    console.print(
+        i18n.tr(language, "write_file_confirmation", path=file_path_to_write)
+    )
+    choice = console.input("Bạn có đồng ý không? [y/n]: ", markup=False).lower()
+
+    if choice == "y":
+        try:
+            parent_dir = os.path.dirname(file_path_to_write)
+            if parent_dir:
+                os.makedirs(parent_dir, exist_ok=True)
+            with open(file_path_to_write, "w", encoding="utf-8") as f:
+                f.write(content_to_write)
+            return i18n.tr(language, "write_file_success", path=file_path_to_write)
+        except Exception as e:
+            logger.exception("Lỗi khi ghi file '%s'", file_path_to_write)
+            return i18n.tr(language, "write_file_error", error=e)
+    else:
+        return i18n.tr(language, "write_file_denied")
+
+
+def _send_and_accumulate(chat_session, message, total_tokens):
+    """Gửi message tới chat_session, đọc stream và cộng dồn token usage."""
+    response_stream = api.send_message(chat_session, message)
+    text_chunk, function_calls = accumulate_response_stream(response_stream)
+
+    try:
+        response_stream.resolve()
+        usage = api.get_token_usage(response_stream)
+        if usage:
+            for key in total_tokens:
+                total_tokens[key] += usage.get(key, 0)
+    except Exception:
+        # Không nên làm fail cả lượt chat chỉ vì không đọc được usage
+        logger.debug(
+            "Không thể resolve response stream hoặc lấy token usage.",
+            exc_info=True,
+        )
+
+    return text_chunk, function_calls
+
+
+def _execute_single_tool_call(func_call, status, console: Console, tool_calls_log: list):
+    """Thực thi một tool call đơn lẻ và trả về function_response tương ứng."""
+    tool_name = func_call.name
+    tool_args = dict(func_call.args) if func_call.args else {}
+
+    status.update(
+        f"[bold green]⚙️ Đang chạy tool [cyan]{tool_name}[/cyan]...[/bold green]"
+    )
+
+    result = ""
+    if tool_name in api.AVAILABLE_TOOLS:
+        try:
+            tool_function = api.AVAILABLE_TOOLS[tool_name]
+            result = tool_function(**tool_args)
+        except Exception as e:
+            logger.exception("Error executing tool '%s'", tool_name)
+            result = f"Error executing tool '{tool_name}': {str(e)}"
+    else:
+        logger.warning("Tool '%s' không tồn tại trong AVAILABLE_TOOLS.", tool_name)
+        result = f"Error: Tool '{tool_name}' not found."
+
+    if isinstance(result, str) and result.startswith(
+        "USER_CONFIRMATION_REQUIRED:WRITE_FILE:"
+    ):
+        status.stop()
+        file_path_to_write = result.split(":", 2)[2]
+        content_to_write = tool_args.get("content", "")
+        result = confirm_and_write_file(console, file_path_to_write, content_to_write)
+        status.start()
+
+    tool_calls_log.append(
+        {
+            "name": tool_name,
+            "args": tool_args,
+            "result": str(result),
+        }
+    )
+
+    return {
+        "function_response": {
+            "name": tool_name,
+            "response": {"result": result},
+        }
+    }
 
 
 def handle_conversation_turn(chat_session, prompt_parts, console: Console, model_name: str = None, args: argparse.Namespace = None):
@@ -106,94 +208,38 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
 
     while attempt_count < max_attempts:
         try:
+
             final_text_response = ""
             total_tokens = {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}
             tool_calls_log = []
             
             with console.status("[bold green]AI đang suy nghĩ...[/bold green]", spinner="dots") as status:
                 # Gọi hàm send_message gốc (có stream)
-                response_stream = api.send_message(chat_session, prompt_parts)
-                text_chunk, function_calls = accumulate_response_stream(response_stream)
-                
-                try:
-                    response_stream.resolve()
-                    usage = api.get_token_usage(response_stream)
-                    if usage:
-                        for key in total_tokens:
-                            total_tokens[key] += usage.get(key, 0)
-                except Exception:
-                    pass
-                
+                text_chunk, function_calls = _send_and_accumulate(
+                    chat_session, prompt_parts, total_tokens
+                )
+
                 if text_chunk:
                     final_text_response += text_chunk
 
                 while function_calls:
                     tool_responses = []
                     for func_call in function_calls:
-                        tool_name = func_call.name
-                        tool_args = dict(func_call.args) if func_call.args else {}
-                        
-                        status.update(f"[bold green]⚙️ Đang chạy tool [cyan]{tool_name}[/cyan]...[/bold green]")
-                        
-                        result = ""
-                        if tool_name in api.AVAILABLE_TOOLS:
-                            try:
-                                tool_function = api.AVAILABLE_TOOLS[tool_name]
-                                result = tool_function(**tool_args)
-                            except Exception as e:
-                                result = f"Error executing tool '{tool_name}': {str(e)}"
-                        else:
-                            result = f"Error: Tool '{tool_name}' not found."
-                        
-                        if isinstance(result, str) and result.startswith("USER_CONFIRMATION_REQUIRED:WRITE_FILE:"):
-                            status.stop()
-                            file_path_to_write = result.split(":", 2)[2]
-                            
-                            console.print(f"[bold yellow]⚠️ AI muốn ghi vào file '{file_path_to_write}'. Nội dung sẽ được ghi đè nếu file tồn tại.[/bold yellow]")
-                            choice = console.input("Bạn có đồng ý không? [y/n]: ", markup=False).lower()
+                        tool_response = _execute_single_tool_call(
+                            func_call,
+                            status,
+                            console,
+                            tool_calls_log,
+                        )
+                        tool_responses.append(tool_response)
 
-                            if choice == 'y':
-                                try:
-                                    content_to_write = tool_args.get('content', '')
-                                    parent_dir = os.path.dirname(file_path_to_write)
-                                    if parent_dir:
-                                        os.makedirs(parent_dir, exist_ok=True)
-                                    with open(file_path_to_write, 'w', encoding='utf-8') as f:
-                                        f.write(content_to_write)
-                                    result = f"Đã ghi thành công vào file '{file_path_to_write}'."
-                                except Exception as e:
-                                    result = f"Lỗi khi ghi file: {e}"
-                            else:
-                                result = "Người dùng đã từ chối hành động ghi file."
-                            
-                            status.start()
-                            
-                        tool_calls_log.append({
-                            "name": tool_name,
-                            "args": tool_args,
-                            "result": str(result)
-                        })
-                        
-                        tool_responses.append({
-                            "function_response": {
-                                "name": tool_name,
-                                "response": {"result": result}
-                            }
-                        })
+                    status.update(
+                        "[bold green]AI đang xử lý kết quả từ tool...[/bold green]"
+                    )
+                    text_chunk, function_calls = _send_and_accumulate(
+                        chat_session, tool_responses, total_tokens
+                    )
 
-                    status.update("[bold green]AI đang xử lý kết quả từ tool...[/bold green]")
-                    response_stream = api.send_message(chat_session, tool_responses)
-                    text_chunk, function_calls = accumulate_response_stream(response_stream)
-                    
-                    try:
-                        response_stream.resolve()
-                        usage = api.get_token_usage(response_stream)
-                        if usage:
-                            for key in total_tokens:
-                                total_tokens[key] += usage.get(key, 0)
-                    except Exception:
-                        pass
-                    
                     if text_chunk:
                         final_text_response += "\n" + text_chunk
 
@@ -211,19 +257,23 @@ def handle_conversation_turn(chat_session, prompt_parts, console: Console, model
         
         except ResourceExhausted as e:
             attempt_count += 1
-            console.print(f"\n[yellow]⚠️ Gặp lỗi Quota. Đang thử chuyển sang key tiếp theo... ({attempt_count}/{max_attempts})[/yellow]")
-            success, msg = api.switch_to_next_api_key()
-            if success:
-                console.print(f"[green]✅ Đã chuyển sang {msg}. Đang tạo lại session...[/green]")
-                chat_session = api.start_chat_session(
-                    model_name, 
-                    *get_session_recreation_args(chat_session, args)
-                )
-                continue
-            else:
-                console.print(f"[bold red]❌ {msg}. Đã hết API keys.[/bold red]")
-                break
-        except Exception as e:
+            console.print(
+                f"\n[yellow]⚠️ Gặp lỗi Quota. Đang thử chuyển sang key tiếp theo... ({attempt_count}/{max_attempts})[/yellow]"
+            )
+            logger.warning("Gặp lỗi Quota trong handle_conversation_turn: %s", e)
+            msg = api.switch_to_next_api_key()
+            console.print(
+                f"[green]✅ Đã chuyển sang {msg}. Đang tạo lại session...[/green]"
+            )
+            chat_session = api.start_chat_session(
+                model_name,
+                *get_session_recreation_args(chat_session, args),
+            )
+            continue
+        except Exception:
+            logger.exception(
+                "Đã xảy ra lỗi không mong muốn trong handle_conversation_turn."
+            )
             raise
 
     return "", {'prompt_tokens': 0, 'completion_tokens': 0, 'total_tokens': 0}, 0, []

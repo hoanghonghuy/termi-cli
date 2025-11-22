@@ -1,10 +1,13 @@
 """
-Mô-đun này chịu trách nhiệm quản lý tương tác với API của Google Gemini,
-bao gồm cả cơ chế xử lý lỗi Quota mạnh mẽ.
+Module này chịu trách nhiệm quản lý tương tác với API của Google Gemini,
+bao gồm cả cơ chế xử lý lỗi Quota mạnh mẽ, và đăng ký danh sách tools (bao gồm plugin).
 """
 import os
 import time
 import re
+import importlib.util
+from pathlib import Path
+
 import google.generativeai as genai
 from google.api_core.exceptions import ResourceExhausted
 from rich.table import Table
@@ -15,10 +18,51 @@ from termi_cli.tools import web_search, database, calendar_tool, email_tool, fil
 from termi_cli.tools import instruction_tool
 from termi_cli.tools import code_tool
 from termi_cli.prompts import build_enhanced_instruction
+from termi_cli.config import APP_DIR
 
 _current_api_key_index = 0
 _api_keys = []
 _console = Console()
+
+def _load_plugin_tools() -> dict[str, callable]:  # type: ignore[name-defined]
+    """Tải thêm tools từ thư mục plugin `APP_DIR/plugins`.
+
+    Mỗi file `.py` (không bắt đầu bằng `_`) có thể định nghĩa biến
+    `PLUGIN_TOOLS` là một dict: tên_tool (str) -> callable.
+    Các key trùng với core tools sẽ bị bỏ qua để tránh override ngầm.
+    """
+
+    plugin_tools: dict[str, callable] = {}
+    plugins_dir = Path(APP_DIR) / "plugins"
+    if not plugins_dir.exists() or not plugins_dir.is_dir():
+        return plugin_tools
+
+    for path in plugins_dir.glob("*.py"):
+        if path.name.startswith("_"):
+            continue
+
+        module_name = f"termi_cli_plugins.{path.stem}"
+        try:
+            spec = importlib.util.spec_from_file_location(module_name, path)
+            if spec is None or spec.loader is None:
+                continue
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)  # type: ignore[assignment]
+
+            tools_dict = getattr(module, "PLUGIN_TOOLS", None)
+            if isinstance(tools_dict, dict):
+                for name, func in tools_dict.items():
+                    if not callable(func):
+                        continue
+                    # Không override core tools
+                    if name in plugin_tools:
+                        continue
+                    plugin_tools[name] = func
+        except Exception:
+            # Plugin lỗi sẽ bị bỏ qua, không làm hỏng toàn bộ CLI
+            continue
+
+    return plugin_tools
 
 # Ánh xạ tên tool tới hàm thực thi
 AVAILABLE_TOOLS = {
@@ -36,6 +80,12 @@ AVAILABLE_TOOLS = {
     file_system_tool.create_directory.__name__: file_system_tool.create_directory,
     shell_tool.execute_command.__name__: shell_tool.execute_command,
 }
+
+# Hợp nhất plugin tools (nếu có), ưu tiên giữ nguyên core tools khi trùng tên
+_PLUGIN_TOOLS = _load_plugin_tools()
+for _name, _func in _PLUGIN_TOOLS.items():
+    if _name not in AVAILABLE_TOOLS:
+        AVAILABLE_TOOLS[_name] = _func
 
 def configure_api(api_key: str):
     """Cấu hình API key ban đầu."""

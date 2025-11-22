@@ -2,9 +2,13 @@
 Công cụ dành cho AI để tương tác với các file code,
 như đọc, tái cấu trúc, hoặc viết tài liệu.
 """
+import logging
+
 import google.generativeai as genai
 from termi_cli.config import load_config
 from termi_cli import api
+
+logger = logging.getLogger(__name__)
 
 def _get_code_from_file(file_path: str) -> str | None:
     """Hàm trợ giúp để đọc nội dung file."""
@@ -24,7 +28,8 @@ def refactor_code(file_path: str) -> str:
     Returns:
         str: Đoạn code đã được tái cấu trúc hoặc các đề xuất.
     """
-    print(f"--- TOOL: Đang đọc file để tái cấu trúc: {file_path} ---")
+    logger.info("--- TOOL: Đang đọc file để tái cấu trúc: %s ---", file_path)
+
     code_content = _get_code_from_file(file_path)
     if code_content.startswith("Error"):
         return code_content
@@ -38,7 +43,8 @@ def refactor_code(file_path: str) -> str:
         f"```python\n{code_content}\n```"
     )
     
-    print("--- TOOL: Đang gửi yêu cầu tái cấu trúc tới AI ---")
+    logger.info("--- TOOL: Đang gửi yêu cầu tái cấu trúc tới AI ---")
+
     response = api.resilient_generate_content(model, prompt)
     return response.text
 
@@ -50,7 +56,8 @@ def document_code(file_path: str) -> str:
     Returns:
         str: Đoạn code đã được bổ sung tài liệu.
     """
-    print(f"--- TOOL: Đang đọc file để viết tài liệu: {file_path} ---")
+    logger.info("--- TOOL: Đang đọc file để viết tài liệu: %s ---", file_path)
+
     code_content = _get_code_from_file(file_path)
     if code_content.startswith("Error"):
         return code_content
@@ -65,6 +72,7 @@ def document_code(file_path: str) -> str:
         f"```python\n{code_content}\n```"
     )
 
-    print("--- TOOL: Đang gửi yêu cầu viết tài liệu tới AI ---")
+    logger.info("--- TOOL: Đang gửi yêu cầu viết tài liệu tới AI ---")
+
     response = api.resilient_generate_content(model, prompt)
     return response.text

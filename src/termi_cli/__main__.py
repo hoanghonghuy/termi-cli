@@ -4,10 +4,19 @@ import io
 import contextlib
 import argparse
 import json
+import logging
+
 from rich.markup import escape
 from rich.console import Console
 from PIL import Image
 from dotenv import load_dotenv
+
+# Chuẩn hoá biến môi trường LANGUAGE càng sớm càng tốt để tránh lỗi
+lang_env = os.environ.get("LANGUAGE")
+if lang_env:
+    primary = lang_env.replace(" ", "").split(",")[0].split(":")[0]
+    if primary in ("vi", "en"):
+        os.environ["LANGUAGE"] = primary
 
 # --- Boilerplate để tắt log không cần thiết ---
 @contextlib.contextmanager
@@ -41,8 +50,8 @@ except (ImportError, AttributeError):
     pass
 # --- Kết thúc Boilerplate ---
 
-from termi_cli import api, utils, cli, memory
-from termi_cli.config import load_config
+from termi_cli import api, utils, cli, memory, i18n
+from termi_cli.config import load_config, APP_DIR
 from termi_cli.handlers import (
     agent_handler,
     chat_handler,
@@ -55,8 +64,28 @@ from termi_cli.handlers import (
 def main(provided_args=None):
     """Hàm chính điều phối toàn bộ ứng dụng."""
     load_dotenv()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s - %(message)s",
+    )
+
+    # Ghi log ra file ngoài console (trong thư mục ứng dụng cố định)
+    log_dir = os.path.join(APP_DIR, "logs")
+    try:
+        os.makedirs(log_dir, exist_ok=True)
+        file_handler = logging.FileHandler(os.path.join(log_dir, "termi.log"), encoding="utf-8")
+        file_handler.setLevel(logging.DEBUG)
+        file_formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(name)s - %(message)s")
+        file_handler.setFormatter(file_formatter)
+        logging.getLogger().addHandler(file_handler)
+    except Exception:
+        # Không được để lỗi logging làm hỏng trải nghiệm CLI
+        pass
+
     console = Console()
     config = load_config()
+    language = config.get("language", "vi")
+
     parser = cli.create_parser()
     
     try:
@@ -64,16 +93,21 @@ def main(provided_args=None):
         cli_help_text = parser.format_help()
         args.cli_help_text = cli_help_text 
 
+        # Cho phép override ngôn ngữ tạm thởi qua --lang/--language
+        if getattr(args, "language", None):
+            language = args.language
+            config["language"] = language
+
         # --- Cấu hình ban đầu ---
         args.model = args.model or config.get("default_model")
         args.format = args.format or config.get("default_format", "rich")
         
         keys = api.initialize_api_keys()
         if not keys:
-            console.print("[bold red]Lỗi: Vui lòng thiết lập GOOGLE_API_KEY trong file .env[/bold red]"); return
+            console.print(i18n.tr(language, "error_no_api_key")); return
         
         if len(keys) > 1:
-            console.print(f"[dim]🔑 Đã tải {len(keys)} API key(s)[/dim]")
+            console.print(i18n.tr(language, "api_keys_loaded", count=len(keys)))
         
         api.configure_api(keys[0])
 
@@ -93,7 +127,7 @@ def main(provided_args=None):
         # --- Xử lý Agent Mode ---
         if args.agent:
             if not args.prompt:
-                console.print("[bold red]Lỗi: Chế độ Agent yêu cầu một mục tiêu (prompt).[/bold red]"); return
+                console.print(i18n.tr(language, "agent_requires_prompt")); return
             agent_handler.run_master_agent(console, args)
             return
 
@@ -111,12 +145,12 @@ def main(provided_args=None):
 
                 action = ''
                 while action not in ['c', 's', 'q']:
-                    prompt_text = "Bạn muốn [c]hat tiếp, [s]ummarize (tóm tắt), hay [q]uit? "
+                    prompt_text = i18n.tr(language, "history_action_prompt")
                     console.print(f"[bold yellow]{escape(prompt_text)}[/bold yellow]", end="")
                     sys.stdout.flush()
                     action = input().lower().strip()
                 
-                if action == 'q': console.print("[yellow]Đã thoát.[/yellow]"); return
+                if action == 'q': console.print(i18n.tr(language, "action_quit")); return
                 
                 if action == 'c':
                     args.load = selected_file
@@ -141,7 +175,7 @@ def main(provided_args=None):
                     try:
                         with open(file_to_load, 'r', encoding='utf-8') as f:
                             history = json.load(f).get("history", [])
-                        console.print(f"[green]Đã tải lịch sử từ '{file_to_load}'.[/green]")
+                        console.print(i18n.tr(language, "history_loaded_from_file", path=file_to_load))
                     except Exception as e:
                         console.print(f"[bold red]Lỗi khi tải lịch sử: {e}[/bold red]"); return
         
@@ -149,7 +183,7 @@ def main(provided_args=None):
             if history:
                 history_handler.handle_history_summary(console, config, history, cli_help_text)
             else:
-                console.print("[yellow]Không có lịch sử để tóm tắt. Hãy dùng --load hoặc --topic.[/yellow]")
+                console.print(i18n.tr(language, "no_history_to_summarize"))
             return
         
         if args.print_log and history:
@@ -161,12 +195,7 @@ def main(provided_args=None):
         # --- Chế độ Chat ---
         if args.chat or args.topic:
             # Xây dựng system instruction cho chat
-            saved_instructions = config.get("saved_instructions", [])
-            system_instruction_str = "\n".join(f"- {item}" for item in saved_instructions)
-            if args.system_instruction:
-                system_instruction_str = args.system_instruction
-            elif args.persona and config.get("personas", {}).get(args.persona):
-                system_instruction_str = config["personas"][args.persona]
+            system_instruction_str = core_handler.build_system_instruction(config, args)
 
             chat_session = api.start_chat_session(args.model, system_instruction_str, history, cli_help_text=cli_help_text)
             chat_handler.run_chat_mode(chat_session, console, config, args)
@@ -185,7 +214,7 @@ def main(provided_args=None):
         
         if not any([args.prompt, piped_input, args.image]):
             if not (history and args.print_log and (args.chat or args.topic)):
-                console.print("[bold red]Lỗi: Cần cung cấp prompt hoặc một hành động cụ thể.[/bold red]")
+                console.print(i18n.tr(language, "error_need_prompt_or_action"))
                 parser.print_help()
             return
 
@@ -202,11 +231,11 @@ def main(provided_args=None):
         if user_intent:
             relevant_memory = memory.search_memory(user_intent)
             if relevant_memory:
-                console.print("[dim]🧠 Đã tìm thấy trí nhớ liên quan...[/dim]")
+                console.print(i18n.tr(language, "memory_found_relevant"))
                 prompt_text = f"{relevant_memory}\n---\n\n{prompt_text}"
 
         if args.read_dir:
-            console.print("[yellow]Đang đọc ngữ cảnh thư mục...[/yellow]")
+            console.print(i18n.tr(language, "reading_directory_context"))
             context = utils.get_directory_context()
             prompt_text = f"Dựa vào ngữ cảnh các file dưới đây:\n{context}\n\n{prompt_text}"
         
@@ -216,21 +245,16 @@ def main(provided_args=None):
                     img = Image.open(image_path)
                     prompt_parts.append(img)
                 except (FileNotFoundError, IsADirectoryError):
-                    console.print(f"[bold red]Lỗi: Không tìm thấy file ảnh '{image_path}'[/bold red]"); return
+                    console.print(i18n.tr(language, "error_image_not_found", path=image_path)); return
                 except Exception as e:
-                    console.print(f"[bold red]Lỗi khi mở ảnh '{image_path}': {e}[/bold red]"); return
-            console.print(f"[green]Đã tải lên {len(args.image)} ảnh.[/green]")
+                    console.print(i18n.tr(language, "error_opening_image", path=image_path, error=e)); return
+            console.print(i18n.tr(language, "images_loaded_count", count=len(args.image)))
         
         if prompt_text:
             prompt_parts.append(prompt_text)
 
         # Xây dựng system instruction cho prompt đơn
-        saved_instructions = config.get("saved_instructions", [])
-        system_instruction_str = "\n".join(f"- {item}" for item in saved_instructions)
-        if args.system_instruction:
-            system_instruction_str = args.system_instruction
-        elif args.persona and config.get("personas", {}).get(args.persona):
-            system_instruction_str = config["personas"][args.persona]
+        system_instruction_str = core_handler.build_system_instruction(config, args)
 
         chat_session = api.start_chat_session(args.model, system_instruction_str, history, cli_help_text=cli_help_text)
         
@@ -254,14 +278,14 @@ def main(provided_args=None):
         if args.output:
             with open(args.output, 'w', encoding='utf-8') as f:
                 f.write(final_response_text)
-            console.print(f"\n[bold green]✅ Đã lưu kết quả vào file: [cyan]{args.output}[/cyan][/bold green]")
+            console.print(i18n.tr(language, "file_saved_to", path=args.output))
         
         utils.execute_suggested_commands(final_response_text, console)
 
     except KeyboardInterrupt:
-        console.print("\n[yellow]Đã dừng bởi người dùng.[/yellow]")
+        console.print(i18n.tr(language, "interrupted_by_user"))
     except Exception as e:
-        console.print(f"[bold red]Đã xảy ra lỗi khởi động không mong muốn: {e}[/bold red]")
+        console.print(i18n.tr(language, "unexpected_startup_error", error=e))
 
 if __name__ == "__main__":
     main()

@@ -1,9 +1,9 @@
-from src import handlers
+from termi_cli.handlers import config_handler as handlers
 
 def test_add_instruction(mocker):
     """Kiểm tra việc thêm một chỉ dẫn mới."""
     # 1. Giả lập hàm save_config để nó không ghi file thật
-    mock_save = mocker.patch('src.handlers.save_config')
+    mock_save = mocker.patch('termi_cli.handlers.config_handler.save_config')
     
     # 2. Tạo config ban đầu
     config = {"saved_instructions": ["rule1"]}
@@ -18,7 +18,8 @@ def test_add_instruction(mocker):
 
 def test_remove_instruction(mocker):
     """Kiểm tra việc xóa một chỉ dẫn."""
-    mock_save = mocker.patch('src.handlers.save_config')
+    mock_save = mocker.patch('termi_cli.handlers.config_handler.save_config')
+    
     config = {"saved_instructions": ["rule1", "rule2", "rule3"]}
     
     # Xóa item ở giữa (index=2)
@@ -29,7 +30,8 @@ def test_remove_instruction(mocker):
 
 def test_add_persona(mocker):
     """Kiểm tra việc thêm một persona mới."""
-    mock_save = mocker.patch('src.handlers.save_config')
+    mock_save = mocker.patch('termi_cli.handlers.config_handler.save_config')
+    
     config = {"personas": {"coder": "You are a coder."}}
     
     handlers.add_persona(console=mocker.MagicMock(), config=config, name="tester", instruction="You are a tester.")
@@ -40,7 +42,8 @@ def test_add_persona(mocker):
 
 def test_remove_persona(mocker):
     """Kiểm tra việc xóa một persona."""
-    mock_save = mocker.patch('src.handlers.save_config')
+    mock_save = mocker.patch('termi_cli.handlers.config_handler.save_config')
+    
     config = {"personas": {"coder": "...", "tester": "..."}}
     
     handlers.remove_persona(console=mocker.MagicMock(), config=config, name="coder")
