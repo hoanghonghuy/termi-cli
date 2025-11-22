@@ -12,7 +12,7 @@ from rich.console import Console
 from rich.markdown import Markdown
 from rich.table import Table
 
-from termi_cli import api, i18n
+from termi_cli import api, i18n, utils
 from termi_cli.config import load_config, APP_DIR
 from .core_handler import handle_conversation_turn
 
@@ -184,3 +184,92 @@ def handle_history_summary(
 
     except Exception as e:
         console.print(i18n.tr(language, "error_history_summary", error=e))
+
+
+def _resolve_history_file(target: str) -> str:
+    """Chuyển một tham số generic (path hoặc topic) thành đường dẫn file lịch sử."""
+    if os.path.exists(target):
+        return target
+    return os.path.join(HISTORY_DIR, f"chat_{utils.sanitize_filename(target)}.json")
+
+
+def delete_history_entry(console: Console, target: str) -> bool:
+    """Xóa một lịch sử chat theo đường dẫn file hoặc topic (non-interactive)."""
+    language = load_config().get("language", "vi")
+    file_path = _resolve_history_file(target)
+
+    if not os.path.exists(file_path):
+        console.print(i18n.tr(language, "history_file_not_found", target=target))
+        return False
+
+    try:
+        title = os.path.basename(file_path)
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+                title = data.get("title", title)
+        except Exception:
+            pass
+
+        os.remove(file_path)
+        console.print(
+            i18n.tr(language, "history_delete_success", title=title)
+        )
+        return True
+    except Exception as e:
+        console.print(
+            i18n.tr(language, "chat_cannot_save_history_error", error=e)
+        )
+        return False
+
+
+def rename_history_entry(console: Console, old: str, new_title: str) -> bool:
+    """Đổi tên lịch sử chat theo path hoặc topic sang một tiêu đề mới (non-interactive)."""
+    language = load_config().get("language", "vi")
+
+    if not new_title:
+        console.print(i18n.tr(language, "history_invalid_choice"))
+        return False
+
+    file_path = _resolve_history_file(old)
+    if not os.path.exists(file_path):
+        console.print(i18n.tr(language, "history_file_not_found", target=old))
+        return False
+
+    try:
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception:
+            data = {}
+
+        data["title"] = new_title
+
+        new_filename = f"chat_{utils.sanitize_filename(new_title)}.json"
+        new_path = os.path.join(HISTORY_DIR, new_filename)
+
+        # Tránh ghi đè file khác nếu trùng tên
+        if (
+            os.path.abspath(new_path) != os.path.abspath(file_path)
+            and os.path.exists(new_path)
+        ):
+            console.print(
+                i18n.tr(language, "history_rename_conflict", title=new_title)
+            )
+            return False
+
+        if os.path.abspath(new_path) != os.path.abspath(file_path):
+            os.rename(file_path, new_path)
+
+        with open(new_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+        console.print(
+            i18n.tr(language, "history_rename_success", title=new_title)
+        )
+        return True
+    except Exception as e:
+        console.print(
+            i18n.tr(language, "chat_cannot_save_history_error", error=e)
+        )
+        return False

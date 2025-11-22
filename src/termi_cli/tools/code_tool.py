@@ -4,7 +4,6 @@ như đọc, tái cấu trúc, hoặc viết tài liệu.
 """
 import logging
 
-import google.generativeai as genai
 from termi_cli.config import load_config
 from termi_cli import api
 
@@ -35,7 +34,7 @@ def refactor_code(file_path: str) -> str:
         return code_content
 
     config = load_config()
-    model = genai.GenerativeModel(config.get("default_model"))
+    model_name = config.get("code_model") or config.get("default_model")
     
     prompt = (
         "Với vai trò là một kiến trúc sư phần mềm chuyên nghiệp, hãy tái cấu trúc (refactor) đoạn code dưới đây để nó sạch hơn, hiệu quả hơn và dễ bảo trì hơn.\n"
@@ -45,8 +44,18 @@ def refactor_code(file_path: str) -> str:
     
     logger.info("--- TOOL: Đang gửi yêu cầu tái cấu trúc tới AI ---")
 
-    response = api.resilient_generate_content(model, prompt)
-    return response.text
+    try:
+        return api.generate_text(model_name, prompt)
+    except (api.DeepseekInsufficientBalance, api.GroqInsufficientBalance):
+        fallback_model = config.get("default_model")
+        if fallback_model and fallback_model != model_name:
+            logger.warning(
+                "DeepSeek/Groq Insufficient Balance cho model '%s', fallback sang '%s' cho refactor_code.",
+                model_name,
+                fallback_model,
+            )
+            return api.generate_text(fallback_model, prompt)
+        raise
 
 def document_code(file_path: str) -> str:
     """
@@ -63,7 +72,7 @@ def document_code(file_path: str) -> str:
         return code_content
 
     config = load_config()
-    model = genai.GenerativeModel(config.get("default_model"))
+    model_name = config.get("code_model") or config.get("default_model")
     
     prompt = (
         "Với vai trò là một lập trình viên kinh nghiệm, hãy viết tài liệu (docstrings cho hàm/class và comment cho các logic phức tạp) cho đoạn code dưới đây.\n"
@@ -74,5 +83,15 @@ def document_code(file_path: str) -> str:
 
     logger.info("--- TOOL: Đang gửi yêu cầu viết tài liệu tới AI ---")
 
-    response = api.resilient_generate_content(model, prompt)
-    return response.text
+    try:
+        return api.generate_text(model_name, prompt)
+    except (api.DeepseekInsufficientBalance, api.GroqInsufficientBalance):
+        fallback_model = config.get("default_model")
+        if fallback_model and fallback_model != model_name:
+            logger.warning(
+                "DeepSeek/Groq Insufficient Balance cho model '%s', fallback sang '%s' cho document_code.",
+                model_name,
+                fallback_model,
+            )
+            return api.generate_text(fallback_model, prompt)
+        raise

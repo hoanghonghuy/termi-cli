@@ -40,3 +40,4 @@ memory_db/
 htmlcov/
 logs/
 COMMIT_EDITMSG.tmp
+_termi_tmp/

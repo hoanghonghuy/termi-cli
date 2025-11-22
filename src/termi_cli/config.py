@@ -34,6 +34,12 @@ def load_config() -> dict:
     defaults = {
         "default_model": "models/gemini-flash-latest",
         "agent_model": "models/gemini-pro-latest",
+        # Model dành riêng cho các tiện ích code (refactor/document).
+        # Mặc định trùng với default_model để không thay đổi behaviour cũ.
+        "code_model": "models/gemini-flash-latest",
+        # Model dành riêng cho việc sinh commit message.
+        # Mặc định trùng với default_model để backward-compatible.
+        "commit_model": "models/gemini-flash-latest",
         "default_format": "rich",
         "default_system_instruction": "You are a helpful AI assistant.",
         "language": "vi",
@@ -42,7 +48,8 @@ def load_config() -> dict:
             "models/gemini-pro-latest"
         ],
         "personas": {},
-        "database": {}
+        "database": {},
+        "profiles": {},
     }
     
     final_config = {**defaults, **config_data}

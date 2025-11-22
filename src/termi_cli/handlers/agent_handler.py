@@ -109,6 +109,43 @@ def _extract_first_json_match(text: str):
     return json_match
 
 
+def _get_safe_agent_model(console: Console, config: dict) -> str:
+    """Đảm bảo Agent luôn dùng model Gemini an toàn.
+
+    Nếu config.agent_model là DeepSeek/Groq (HTTP provider), in cảnh báo và
+    fallback sang một model Gemini (ưu tiên default_model nếu có dạng Gemini).
+    """
+    language = config.get("language", "vi")
+    agent_model = config.get("agent_model", "models/gemini-pro-latest")
+
+    provider = "gemini"
+    if isinstance(agent_model, str):
+        if agent_model.startswith("deepseek-"):
+            provider = "deepseek"
+        elif agent_model.startswith("groq-"):
+            provider = "groq"
+
+    if provider == "gemini":
+        return agent_model
+
+    # Tìm fallback Gemini an toàn
+    fallback = config.get("default_model") or "models/gemini-pro-latest"
+    if not isinstance(fallback, str) or not (
+        fallback.startswith("models/") or "gemini" in fallback.lower()
+    ):
+        fallback = "models/gemini-pro-latest"
+
+    console.print(
+        i18n.tr(
+            language,
+            "agent_http_provider_not_supported_for_agent",
+            model=agent_model,
+            fallback_model=fallback,
+        )
+    )
+    return fallback
+
+
 def run_master_agent(console: Console, args: argparse.Namespace):
     """
     Hàm chính điều khiển Agent, với vòng lặp retry mạnh mẽ để xử lý lỗi Quota.
@@ -116,7 +153,7 @@ def run_master_agent(console: Console, args: argparse.Namespace):
     config = load_config()
     language = config.get("language", "vi")
     dry_run = getattr(args, "agent_dry_run", False)
-    agent_model_name = config.get("agent_model", "models/gemini-pro-latest")
+    agent_model_name = _get_safe_agent_model(console, config)
 
     header_body = i18n.tr(
         language,
@@ -130,13 +167,23 @@ def run_master_agent(console: Console, args: argparse.Namespace):
     
     console.print(Panel(header_body, border_style="blue"))
     console.print(f"[dim]🤖 Model: {agent_model_name.replace('models/', '')} (Agent)[/dim]")
+    if getattr(args, "agent_max_steps", None):
+        console.print(
+            i18n.tr(
+                language,
+                "agent_max_steps_override",
+                max_steps=args.agent_max_steps,
+            )
+        )
+    
 
     initial_response = None
     
     while True:
         try:
-            agent_model_name = config.get("agent_model", "models/gemini-pro-latest")
+            agent_model_name = _get_safe_agent_model(console, config)
             model = api.genai.GenerativeModel(agent_model_name)
+            
             master_prompt = build_master_agent_prompt(args.prompt)
             
             response = api.resilient_generate_content(model, master_prompt)
@@ -233,13 +280,13 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
         console.print(i18n.tr(language, "agent_dry_run_mode_header"))
     console.print(i18n.tr(language, "agent_execution_phase_start"))
 
-    agent_model_name = config.get("agent_model", "models/gemini-pro-latest")
+    agent_model_name = _get_safe_agent_model(console, config)
 
     executor_instruction = build_executor_instruction()
     chat_session = api.start_chat_session(model_name=agent_model_name, system_instruction=executor_instruction)
     plan_str = json.dumps(project_plan, indent=2, ensure_ascii=False)
     scratchpad = f"I have been given a plan to execute.\n\n**PROJECT PLAN:**\n```json\n{plan_str}\n```\n\nMy task is to implement this plan step-by-step."
-    max_steps = 30
+    max_steps = getattr(args, "agent_max_steps", None) or 30
 
     for step in range(max_steps):
         iteration_header = i18n.tr(
@@ -343,13 +390,13 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
     if dry_run:
         console.print(i18n.tr(language, "agent_dry_run_mode_header"))
     
-    agent_model_name = config.get("agent_model", "models/gemini-pro-latest")
+    agent_model_name = _get_safe_agent_model(console, config)
 
     agent_instruction = build_agent_instruction()
     chat_session = api.start_chat_session(model_name=agent_model_name, system_instruction=agent_instruction)
     
     current_step_json = first_step
-    max_steps = 10
+    max_steps = getattr(args, "agent_max_steps", None) or 10
 
     for step in range(max_steps):
         iteration_header = i18n.tr(

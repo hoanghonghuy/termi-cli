@@ -18,6 +18,7 @@ def generate_git_commit_message(console: Console, args: argparse.Namespace, shor
     try:
         config = load_config()
         language = config.get("language", "vi")
+
         git_status = subprocess.check_output(["git", "status", "--porcelain"], text=True, encoding='utf-8').strip()
         if not git_status:
             console.print(i18n.tr(language, "git_no_changes_to_commit"))
@@ -62,13 +63,36 @@ def generate_git_commit_message(console: Console, args: argparse.Namespace, shor
             )
         
         console.print(i18n.tr(language, "git_request_ai_commit_message"))
-        
-        model_name = args.model or config.get("default_model")
 
-        model = api.genai.GenerativeModel(model_name, system_instruction=git_commit_system_instruction)
+        # Ưu tiên: tham số CLI -> commit_model -> code_model -> default_model
+        model_name = (
+            args.model
+            or config.get("commit_model")
+            or config.get("code_model")
+            or config.get("default_model")
+        )
 
-        response = api.resilient_generate_content(model, prompt_text)
-        commit_message = (response.text or "").strip()
+        try:
+            commit_message = api.generate_text(
+                model_name,
+                prompt_text,
+                system_instruction=git_commit_system_instruction,
+            ).strip()
+        except (api.DeepseekInsufficientBalance, api.GroqInsufficientBalance):
+            fallback_model = config.get("default_model")
+            provider_label = "DeepSeek/Groq"
+            console.print(
+                f"[bold red]{provider_label} báo lỗi Insufficient Balance. Không thể dùng {provider_label} để sinh commit lần này.[/bold red]"
+            )
+            console.print(
+                f"[yellow]Đang chuyển tạm sang model Gemini '[cyan]{fallback_model}[/cyan]' để sinh commit message.[/yellow]"
+            )
+
+            commit_message = api.generate_text(
+                fallback_model,
+                prompt_text,
+                system_instruction=git_commit_system_instruction,
+            ).strip()
 
         if not commit_message:
             console.print(i18n.tr(language, "git_commit_message_empty"))

@@ -62,7 +62,11 @@ def test_generate_git_commit_message_short_builds_single_line_subject(mocker):
     # Giả lập load_config để không phụ thuộc file thật
     mocker.patch(
         "termi_cli.handlers.utility_handler.load_config",
-        return_value={"language": "vi", "default_model": "models/gemini-flash-latest"},
+        return_value={
+            "language": "vi",
+            "default_model": "models/gemini-flash-latest",
+            "commit_model": "models/gemini-flash-latest",
+        },
     )
 
     # Giả lập git status và git diff --staged
@@ -81,17 +85,8 @@ def test_generate_git_commit_message_short_builds_single_line_subject(mocker):
 
     # Giả lập model và nội dung trả về từ AI
     mocker.patch(
-        "termi_cli.handlers.utility_handler.api.genai.GenerativeModel",
-        return_value=object(),
-    )
-
-    class FakeResponse:
-        # Cố tình có nhiều dòng và dấu quote đôi để kiểm tra xử lý
-        text = 'feat: add "short" commit\n\nBody line that should be ignored.'
-
-    mocker.patch(
-        "termi_cli.handlers.utility_handler.api.resilient_generate_content",
-        return_value=FakeResponse(),
+        "termi_cli.handlers.utility_handler.api.generate_text",
+        return_value='feat: add "short" commit\n\nBody line that should be ignored.',
     )
 
     exec_suggested_mock = mocker.patch(
@@ -121,7 +116,11 @@ def test_generate_git_commit_message_short_single_line_response(mocker):
 
     mocker.patch(
         "termi_cli.handlers.utility_handler.load_config",
-        return_value={"language": "vi", "default_model": "models/gemini-flash-latest"},
+        return_value={
+            "language": "vi",
+            "default_model": "models/gemini-flash-latest",
+            "commit_model": "models/gemini-flash-latest",
+        },
     )
 
     check_output_mock = mocker.patch(
@@ -138,16 +137,8 @@ def test_generate_git_commit_message_short_single_line_response(mocker):
     )
 
     mocker.patch(
-        "termi_cli.handlers.utility_handler.api.genai.GenerativeModel",
-        return_value=object(),
-    )
-
-    class FakeResponse:
-        text = "chore: update docs"
-
-    mocker.patch(
-        "termi_cli.handlers.utility_handler.api.resilient_generate_content",
-        return_value=FakeResponse(),
+        "termi_cli.handlers.utility_handler.api.generate_text",
+        return_value="chore: update docs",
     )
 
     exec_suggested_mock = mocker.patch(
@@ -169,7 +160,11 @@ def test_generate_git_commit_message_short_empty_response_does_not_execute(mocke
 
     mocker.patch(
         "termi_cli.handlers.utility_handler.load_config",
-        return_value={"language": "vi", "default_model": "models/gemini-flash-latest"},
+        return_value={
+            "language": "vi",
+            "default_model": "models/gemini-flash-latest",
+            "commit_model": "models/gemini-flash-latest",
+        },
     )
 
     check_output_mock = mocker.patch(
@@ -186,16 +181,8 @@ def test_generate_git_commit_message_short_empty_response_does_not_execute(mocke
     )
 
     mocker.patch(
-        "termi_cli.handlers.utility_handler.api.genai.GenerativeModel",
-        return_value=object(),
-    )
-
-    class FakeResponse:
-        text = "   \n  "  # chỉ toàn whitespace
-
-    mocker.patch(
-        "termi_cli.handlers.utility_handler.api.resilient_generate_content",
-        return_value=FakeResponse(),
+        "termi_cli.handlers.utility_handler.api.generate_text",
+        return_value="   \n  ",  # chỉ toàn whitespace
     )
 
     exec_suggested_mock = mocker.patch(

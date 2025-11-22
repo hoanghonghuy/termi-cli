@@ -1,3 +1,4 @@
+import os
 import subprocess
 import shlex
 import logging
@@ -54,13 +55,18 @@ def execute_command(command: str, skip_confirm: bool = False) -> str:
             if parts[1] == "install":
                 dangerous = True
 
-        if dangerous and not skip_confirm:
-            try:
-                choice = input(f"Lệnh '{command}' có thể thay đổi hệ thống (install/commit/chỉnh sửa). Thực thi? [y/N]: ").strip().lower()
-            except (EOFError, KeyboardInterrupt):
-                return "Lệnh đã bị hủy do không nhận được xác nhận từ người dùng."
-            if choice != "y":
-                return "Lệnh đã bị hủy bởi người dùng."
+        if dangerous:
+            # Cho phép vô hiệu hóa hoàn toàn các lệnh side-effect mạnh qua biến môi trường
+            if os.getenv("TERMI_DISABLE_DANGEROUS_SHELL", "").lower() in ("1", "true", "yes"):
+                return f"Lệnh '{command}' đã bị chặn bởi cấu hình an toàn (TERMI_DISABLE_DANGEROUS_SHELL)."
+
+            if not skip_confirm:
+                try:
+                    choice = input(f"Lệnh '{command}' có thể thay đổi hệ thống (install/commit/chỉnh sửa). Thực thi? [y/N]: ").strip().lower()
+                except (EOFError, KeyboardInterrupt):
+                    return "Lệnh đã bị hủy do không nhận được xác nhận từ người dùng."
+                if choice != "y":
+                    return "Lệnh đã bị hủy bởi người dùng."
 
         result = subprocess.run(
             command, 
