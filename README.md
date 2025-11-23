@@ -1,24 +1,24 @@
 # Termi – Multi‑Provider AI CLI
 
 ## Introduction
-Termi là một Command-Line Interface (CLI) AI Agent đa provider, hỗ trợ **Google Gemini**, **DeepSeek** và **Groq**. Nó tích hợp nhiều công cụ để xử lý tác vụ phức tạp, quản lý code, thao tác file, lịch, email… trực tiếp từ terminal.
+Termi is a multi‑provider AI Agent Command-Line Interface (CLI) that supports **Google Gemini**, **DeepSeek**, **Groq**, and OpenRouter (HTTP‑compatible). It integrates many tools to help you run complex AI‑assisted workflows, manage code, work with files, calendars, email, and more directly from your terminal.
 
 ## Key Features
 
-Dựa trên cấu trúc project và các tùy chọn CLI, Termi mang lại các khả năng chính sau:
+Based on the project structure and available CLI options, Termi provides the following core capabilities:
 
-*   **Interactive Modes:** Chat nhiều lượt (`--chat`) hoặc giao nhiệm vụ phức tạp cho Agent tự trị (`--agent`, có cả chế độ `--agent-dry-run`).
+*   **Interactive Modes:** Multi‑turn chat (`--chat`) or autonomous Agent mode for complex tasks (`--agent`, with an optional `--agent-dry-run` preview mode).
 *   **Multi‑Provider Models:**
-    * Gemini: model dạng `models/gemini-*` – hỗ trợ đầy đủ chat, Agent và tool‑calls.
-    * DeepSeek: model bắt đầu bằng `deepseek-*` – gọi HTTP OpenAI-compatible.
-    * Groq: model bắt đầu bằng `groq-*` – gọi HTTP OpenAI-compatible (có alias như `groq-chat`).
-    * Khi DeepSeek/Groq báo **Insufficient Balance**, Termi tự fallback sang Gemini với thông báo rõ ràng.
-*   **Code Utilities:** Tích hợp sinh commit message (`--git-commit`, `--git-commit-short`), viết documentation (`--document`) và gợi ý refactor (`--refactor`).
-*   **Contextual Awareness:** Đọc ảnh (`-i`), đọc toàn bộ thư mục (`--read-dir`), override system instruction (`-si`).
-*   **Personalization:** Quản lý persona (`--add-persona`, `--list-personas`, `--rm-persona`) và custom instructions dài hạn (`--add-instruct`, `--list-instructs`, `--rm-instruct`).
-*   **History Management:** Duyệt lịch sử (`--history`), load theo topic (`--topic`), in log (`--print-log`), tóm tắt (`--summarize`), **đổi tên** và **xóa** lịch sử.
-*   **Diagnostics & Tuning:** `--diagnostics/--whoami` để xem cấu hình model & provider hiện tại, số lượng API key; `--verbose`/`--quiet` để điều chỉnh độ ồn log.
-*   **Extensible Toolset:** Bộ tools phong phú cho web search, file system, database, calendar, email; cho phép mở rộng bằng plugin.
+    * Gemini: models named like `models/gemini-*` – full support for chat, Agent, and tool‑calls.
+    * DeepSeek: models starting with `deepseek-*` – HTTP OpenAI‑compatible endpoints.
+    * Groq: models starting with `groq-*` – HTTP OpenAI‑compatible endpoints (with friendly aliases such as `groq-chat`).
+    * When DeepSeek/Groq reports **Insufficient Balance**, Termi automatically falls back to Gemini with a clear notice.
+*   **Code Utilities:** Generate commit messages (`--git-commit`, `--git-commit-short`), write documentation (`--document`), and suggest refactors (`--refactor`).
+*   **Contextual Awareness:** Read images (`-i`), load full directory context (`--read-dir`), and override the system instruction (`-si`).
+*   **Personalization:** Manage personas (`--add-persona`, `--list-personas`, `--rm-persona`) and long‑term custom instructions (`--add-instruct`, `--list-instructs`, `--rm-instruct`).
+*   **History Management:** Browse history (`--history`), load by topic (`--topic`), print logs (`--print-log`), summarize (`--summarize`), and **rename** or **delete** history entries.
+*   **Diagnostics & Tuning:** `--diagnostics` / `--whoami` to inspect the current model & provider configuration and the number of API keys; `--verbose` / `--quiet` to adjust console log verbosity.
+*   **Extensible Toolset:** A rich toolset for web search, file system, database, calendar, email, and more; easily extended via plugins.
 
 ## Installation
 
@@ -37,19 +37,19 @@ You need Python 3.8+.
 
 3.  **Set up API Keys:**
 
-    Tạo file `.env` ở thư mục gốc hoặc đặt biến môi trường tương ứng:
+    Create a `.env` file in the project root or define the corresponding environment variables:
 
     ```bash
-    # Gemini (bắt buộc)
+    # Gemini (required)
     GOOGLE_API_KEY="YOUR_GOOGLE_GEMINI_API_KEY"
-    # Có thể thêm BACKUP_KEY nếu muốn xoay vòng
+    # Optionally add BACKUP_KEY values if you want key rotation
     GOOGLE_API_KEY_2ND="..."
 
-    # DeepSeek (tùy chọn, nếu muốn dùng DeepSeek)
+    # DeepSeek (optional, if you want to use DeepSeek)
     DEEPSEEK_API_KEY="YOUR_DEEPSEEK_API_KEY"
     DEEPSEEK_API_KEY_2ND="..."
 
-    # Groq (tùy chọn, nếu muốn dùng Groq)
+    # Groq (optional, if you want to use Groq)
     GROQ_API_KEY="YOUR_GROQ_API_KEY"
     GROQ_API_KEY_2ND="..."
     ```
@@ -58,13 +58,13 @@ You need Python 3.8+.
 
 ## Usage
 
-Sau khi cài đặt (ví dụ thông qua `pip install -e .`), entrypoint chính là lệnh:
+After installation (for example via `pip install -e .`), the main entrypoint is:
 
 ```bash
 termi [OPTIONS] [PROMPT]
 ```
 
-Bạn vẫn có thể chạy trực tiếp bằng Python nếu muốn:
+You can also run the CLI directly with Python if you prefer:
 
 ```bash
 python -m termi_cli [OPTIONS] [PROMPT]
@@ -74,10 +74,10 @@ python -m termi_cli [OPTIONS] [PROMPT]
 
 | Command | Description |
 | :--- | :--- |
-| `termi "Your question"` | Single-turn, direct prompt to the AI (Gemini hoặc DeepSeek/Groq nếu chọn model tương ứng). |
+| `termi "Your question"` | Single-turn, direct prompt to the AI (using the configured default model). |
 | `termi --chat` | Start an interactive, multi-turn chat session. |
-| `termi --chat -m deepseek-chat` | Chat nhiều lượt với DeepSeek (HTTP provider). |
-| `termi --chat -m groq-chat` | Chat nhiều lượt với Groq (alias tới model khuyến nghị). |
+| `termi --chat -m deepseek-chat` | Multi-turn chat session using DeepSeek over the HTTP provider. |
+| `termi --chat -m groq-chat` | Multi-turn chat session using Groq (alias mapped to the recommended Groq model). |
 | `termi --agent "A complex task to perform"` | Activate the autonomous Agent mode (Gemini) to solve the task using available tools. |
 
 ### Developer Utilities
@@ -108,17 +108,17 @@ In both cases, the CLI will show you the proposed `git commit` command and ask f
 
 | Flag | Description |
 | :--- | :--- |
-| `-m, --model <NAME>` | Chọn model cho phiên hiện tại (ghi đè tạm thởi `default_model` trong config). Hỗ trợ Gemini, DeepSeek (`deepseek-*`), Groq (`groq-*`). |
-| `--set-model` | Chạy wizard nhiều provider (Gemini / DeepSeek / Groq / OpenRouter) để chọn `default_model`, `code_model`, `commit_model` – với OpenRouter có thể chọn nhanh từ danh sách gợi ý hoặc nhập ID model thủ công. |
-| `--list-models` | Liệt kê các model Gemini khả dụng (kèm cột Provider). |
-| `--diagnostics`, `--whoami` | Hiển thị model đang dùng cho default/code/commit/agent, provider của từng model và số lượng API key (không lộ giá trị). |
-| `--verbose` / `--quiet` | Điều chỉnh độ ồn log trên console (INFO hoặc chỉ ERROR). |
+| `-m, --model <NAME>` | Select the model for the current run (temporarily overriding `default_model` in the config). Supports Gemini, DeepSeek (`deepseek-*`), Groq (`groq-*`), and OpenRouter IDs (`provider/model`). |
+| `--set-model` | Launch a multi-provider wizard (Gemini / DeepSeek / Groq / OpenRouter) to choose `default_model`, `code_model`, and `commit_model`. For OpenRouter you can either select from a suggested list or enter the model ID manually. |
+| `--list-models` | List available Gemini models (with a Provider column). |
+| `--diagnostics`, `--whoami` | Show which models are used for default/code/commit/agent, the provider of each model, and how many API keys are loaded (without revealing their values). |
+| `--verbose` / `--quiet` | Adjust console log verbosity (more INFO logs or only ERRORs). |
 | `-i <PATH>` | Provide one or more image file paths for multimodal analysis. |
 | `--read-dir` | Read the content of the current directory to provide context to the AI. |
 | `--add-persona <NAME> <INSTRUCTION>` | Save a new persona with a custom system instruction. |
-| `--list-personas`, `--rm-persona` | List hoặc xóa persona đã lưu. |
+| `--list-personas`, `--rm-persona` | List or delete saved personas. |
 | `--add-instruct <INSTRUCTION>` | Save a long-term, persistent instruction for the AI to follow in all sessions. |
-| `--list-instructs`, `--rm-instruct` | List hoặc xóa custom instructions đã lưu. |
+| `--list-instructs`, `--rm-instruct` | List or delete saved custom instructions. |
 
 ### Language & i18n
 
@@ -169,6 +169,16 @@ termi --reset-memory
 
 This command deletes the `memory_db/` directory under `APP_DIR`. On the next run, Termi will lazily recreate a fresh database the first time it needs to read/write long‑term memory.
 
+When running in an interactive TTY, the CLI will ask for a `y/n` confirmation before actually deleting the database. In non‑interactive environments (scripts, CI, tests), the confirmation is skipped so that automation never hangs.
+
+Similarly, you can reset the configuration back to defaults:
+
+```bash
+termi --reset-config
+```
+
+This deletes the current `config.json` (either the one under `APP_DIR` or the legacy `config.json` in the current directory) and recreates it with default values. Just like `--reset-memory`, it asks for confirmation in interactive terminals but runs non‑interactively when used from scripts.
+
 Running the CLI from any directory will not scatter these files in your projects; they all live under `APP_DIR`.
 
 ### Agent Modes: Normal vs Dry‑Run
@@ -196,23 +206,23 @@ The autonomous Agent mode can operate in two main styles:
 #### Agent tuning flags
 
 - `--agent-max-steps N`  
-  Giới hạn số bước tối đa mà Agent được phép chạy trong **một phiên**.  
-  Nếu không truyền flag này, Agent dùng giá trị mặc định nội bộ (30 bước cho project plan, 10 bước cho simple task).
+  Limits the maximum number of steps the Agent is allowed to run in **a single session**.  
+  If you omit this flag, internal defaults are used (30 steps for project‑plan flows, 10 steps for simple tasks).
 
-Ví dụ:
+Examples:
 
 ```bash
-termi --agent "Thiết kế kiến trúc cho service này" --agent-max-steps 8
+termi --agent "Design the architecture for this service" --agent-max-steps 8
 termi --agent --agent-dry-run "Refactor module XYZ" --agent-max-steps 5
 ```
 
 #### History & Memory scripting
 
-Các lệnh sau giúp thao tác lịch sử và trí nhớ **không cần vào UI tương tác**:
+The following commands let you work with history and memory **without entering the interactive UI**:
 
 - `--rm-history TARGET`  
-  Xóa một lịch sử chat. `TARGET` có thể là đường dẫn file JSON hoặc tên topic.  
-  Ví dụ:
+  Delete a chat history entry. `TARGET` can be a JSON file path or a topic name.  
+  For example:
 
   ```bash
   termi --rm-history "debug-openapi-errors"
@@ -220,16 +230,16 @@ Các lệnh sau giúp thao tác lịch sử và trí nhớ **không cần vào U
   ```
 
 - `--rename-history OLD NEW`  
-  Đổi tên một lịch sử chat. `OLD` là path hoặc topic cũ, `NEW` là tiêu đề mới.  
-  Ví dụ:
+  Rename a chat history entry. `OLD` is the old path or topic, `NEW` is the new title.  
+  For example:
 
   ```bash
   termi --rename-history "debug-openapi-errors" "Fix OpenAPI client generator"
   ```
 
 - `--memory-search QUERY`  
-  Tìm kiếm trong trí nhớ dài hạn (long‑term memory) các tương tác liên quan, in ra dưới dạng markdown.  
-  Ví dụ:
+  Search long‑term memory for related past interactions and print them as Markdown.  
+  For example:
 
   ```bash
   termi --memory-search "migrations for user table"
@@ -237,43 +247,43 @@ Các lệnh sau giúp thao tác lịch sử và trí nhớ **không cần vào U
 
 #### Quick configuration profiles
 
-Profiles cho phép lưu nhanh và áp dụng lại một bộ cấu hình model/ngôn ngữ/instruction:
+Profiles let you quickly save and reuse a set of model / language / instruction settings:
 
-- Lưu profile hiện tại:
+- Save the current profile:
 
   ```bash
   termi --save-profile dev-gemini
   ```
 
-- Liệt kê profile đã có:
+- List existing profiles:
 
   ```bash
   termi --list-profiles
   ```
 
-- Áp dụng profile cho một phiên chạy:
+- Apply a profile for a given run:
 
   ```bash
   termi --profile dev-gemini --chat
   ```
 
-  Profile sẽ thiết lập lại `default_model`, `code_model`, `commit_model`, `agent_model`, `language`,
-  và `default_system_instruction` trong runtime của phiên hiện tại.
+  The profile will override `default_model`, `code_model`, `commit_model`, `agent_model`, `language`,
+  and `default_system_instruction` for the current run.
 
-- Ngoài các profile do bạn tự lưu, Termi đi kèm sẵn một preset:
+- In addition to the profiles you create yourself, Termi ships with a built‑in preset:
 
   ```bash
-  # Dùng bộ model OpenRouter free tối ưu cho coding
+  # Use the OpenRouter free model bundle optimized for coding
   termi --profile openrouter-free-coding --chat
   ```
 
-  Preset này map:
+  This preset maps:
   - `default_model` → `openai/gpt-4o-mini`
   - `code_model` → `meta-llama/llama-3.1-70b-instruct`
   - `commit_model` → `openai/gpt-4o-mini`
   - `agent_model` → `models/gemini-pro-latest`
 
-- Xóa profile:
+- Remove a profile:
 
   ```bash
   termi --rm-profile dev-gemini
