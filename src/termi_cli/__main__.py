@@ -52,7 +52,8 @@ except (ImportError, AttributeError):
 # --- Kết thúc Boilerplate ---
 
 from termi_cli import api, utils, cli, memory, i18n
-from termi_cli.config import load_config, APP_DIR
+from termi_cli.config import load_config, APP_DIR, CONFIG_PATH
+
 from termi_cli.handlers import (
     agent_handler,
     chat_handler,
@@ -151,9 +152,11 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
     system_instruction_str = core_handler.build_system_instruction(config, args)
     model_name = args.model or config.get("default_model")
 
-    # Nếu là HTTP provider (DeepSeek/Groq) thì không dùng tool-calls Gemini, gọi trực tiếp generate_text
+    # Nếu là HTTP provider (DeepSeek/Groq/OpenRouter) thì không dùng tool-calls Gemini, gọi trực tiếp generate_text
     if isinstance(model_name, str) and (
-        model_name.startswith("deepseek-") or model_name.startswith("groq-")
+        model_name.startswith("deepseek-")
+        or model_name.startswith("groq-")
+        or api.is_openrouter_model(model_name)
     ):
         if not prompt_text:
             return
@@ -167,14 +170,32 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
                 prompt_text,
                 system_instruction=system_instruction_str,
             )
-        except (api.DeepseekInsufficientBalance, api.GroqInsufficientBalance) as e:
-            provider = "DeepSeek" if isinstance(e, api.DeepseekInsufficientBalance) else "Groq"
+        except (
+            api.DeepseekInsufficientBalance,
+            api.GroqInsufficientBalance,
+            api.OpenRouterInsufficientBalance,
+        ) as e:
+            if isinstance(e, api.DeepseekInsufficientBalance):
+                provider = "DeepSeek"
+            elif isinstance(e, api.GroqInsufficientBalance):
+                provider = "Groq"
+            else:
+                provider = "OpenRouter"
+
             console.print(
-                f"[bold red]{provider} báo lỗi Insufficient Balance. Không thể dùng {provider} cho lượt hỏi này.[/bold red]"
+                i18n.tr(
+                    language,
+                    "http_insufficient_balance_single_turn",
+                    provider=provider,
+                )
             )
             fallback_model = config.get("default_model")
             console.print(
-                f"[yellow]Đang chuyển tạm sang model Gemini '[cyan]{fallback_model}[/cyan]' cho lượt hỏi này.[/yellow]"
+                i18n.tr(
+                    language,
+                    "http_switch_to_gemini_single_turn",
+                    fallback_model=fallback_model,
+                )
             )
 
             response_text = api.generate_text(
@@ -381,7 +402,7 @@ def main(provided_args=None):
         cli_help_text = parser.format_help()
         args.cli_help_text = cli_help_text
 
-        # Cho phép override ngôn ngữ tạm thời qua --lang/--language
+        # Cho phép override ngôn ngữ tạm thởi qua --lang/--language
         if getattr(args, "language", None):
             language = args.language
             config["language"] = language
@@ -398,26 +419,69 @@ def main(provided_args=None):
                 if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
                     handler.setLevel(logging.ERROR)
 
-        # Áp dụng profile cấu hình nhanh (nếu có) trước khi set model mặc định
-        if getattr(args, "profile", None):
-            config_handler.apply_profile(console, config, args.profile)
-            language = config.get("language", language)
+        # Cho phép reset toàn bộ config về mặc định (xoá file config.json hiện tại)
+        if getattr(args, "reset_config", False):
+            # Debug thêm khi chạy dưới pytest để kiểm tra đường dẫn
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                console.print(f"[DEBUG] TERMI_CLI_HOME={os.getenv('TERMI_CLI_HOME')}")
+                console.print(f"[DEBUG] APP_DIR={APP_DIR}")
+                console.print(f"[DEBUG] CONFIG_PATH={CONFIG_PATH}")
+                console.print(f"[DEBUG] CONFIG_PATH.exists(before)={CONFIG_PATH.exists()}")
 
-        # --- Cấu hình ban đầu ---
-        args.model = args.model or config.get("default_model")
-        args.format = args.format or config.get("default_format", "rich")
+            # Chỉ hỏi confirm nếu đang chạy trong TTY; nếu không (script/test) thì bỏ qua confirm
+            if sys.stdin.isatty() and "PYTEST_CURRENT_TEST" not in os.environ:
+                answer = console.input(i18n.tr(language, "config_reset_confirm"), markup=False).strip().lower()
+                if answer not in ("y", "yes"):
+                    console.print(i18n.tr(language, "config_reset_cancelled"))
+                    return
 
-        # Lệnh chẩn đoán cấu hình không cần API key
-        if getattr(args, "diagnostics", False):
-            config_handler.show_diagnostics(console, config)
+            try:
+                if CONFIG_PATH.exists():
+                    CONFIG_PATH.unlink()
+
+                load_config()
+
+                if "PYTEST_CURRENT_TEST" in os.environ:
+                    console.print(f"[DEBUG] CONFIG_PATH.exists(after)={CONFIG_PATH.exists()}")
+                    if CONFIG_PATH.exists():
+                        try:
+                            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                                console.print(f"[DEBUG] CONFIG_CONTENT(after)={f.read()}")
+                        except Exception:
+                            pass
+
+                console.print(i18n.tr(language, "config_reset_success", path=str(CONFIG_PATH)))
+            except Exception as e:
+                console.print(i18n.tr(language, "config_reset_error", error=e))
             return
 
         # Cho phép xoá database trí nhớ dài hạn bằng một lệnh riêng
         if getattr(args, "reset_memory", False):
+            # Debug thêm khi chạy dưới pytest để kiểm tra đường dẫn
+            if "PYTEST_CURRENT_TEST" in os.environ:
+                console.print(f"[DEBUG] TERMI_CLI_HOME={os.getenv('TERMI_CLI_HOME')}")
+                console.print(f"[DEBUG] APP_DIR={APP_DIR}")
+                console.print(f"[DEBUG] DB_PATH={memory.DB_PATH}")
+                console.print(f"[DEBUG] DB_PATH.exists(before)={os.path.exists(memory.DB_PATH)}")
+
+            # Chỉ hỏi confirm nếu đang chạy trong TTY; nếu không (script/test) thì bỏ qua confirm
+            if sys.stdin.isatty() and "PYTEST_CURRENT_TEST" not in os.environ:
+                answer = console.input(i18n.tr(language, "memory_reset_confirm"), markup=False).strip().lower()
+                if answer not in ("y", "yes"):
+                    console.print(i18n.tr(language, "memory_reset_cancelled"))
+                    return
+
             if memory.reset_memory_db():
-                console.print("[green]Đã xoá xong database trí nhớ dài hạn (memory_db).[/green]")
+                if "PYTEST_CURRENT_TEST" in os.environ:
+                    console.print(f"[DEBUG] DB_PATH.exists(after)={os.path.exists(memory.DB_PATH)}")
+                console.print(i18n.tr(language, "memory_reset_success"))
             else:
-                console.print("[red]Không thể xoá database trí nhớ dài hạn. Xem thêm chi tiết trong logs/termi.log.[/red]")
+                console.print(i18n.tr(language, "memory_reset_error"))
+            return
+
+        # Lệnh chẩn đoán cấu hình không cần API key
+        if getattr(args, "diagnostics", False):
+            config_handler.show_diagnostics(console, config)
             return
 
         # Tìm kiếm trong trí nhớ dài hạn (không cần API ngoài)
@@ -527,10 +591,11 @@ def main(provided_args=None):
 
             model_name = args.model or config.get("default_model")
 
-            # Nếu model là HTTP provider (DeepSeek/Groq), dùng luồng chat riêng qua HTTP API.
+            # Nếu model là HTTP provider (DeepSeek/Groq/OpenRouter), dùng luồng chat riêng qua HTTP API.
             if isinstance(model_name, str) and (
                 model_name.startswith("deepseek-")
                 or model_name.startswith("groq-")
+                or api.is_openrouter_model(model_name)
             ):
                 chat_handler.run_chat_mode_deepseek(console, config, args, system_instruction_str)
             else:
