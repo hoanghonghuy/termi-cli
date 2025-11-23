@@ -172,8 +172,18 @@ def run_chat_mode_deepseek(console: Console, config: dict, args: argparse.Namesp
                     composite_prompt,
                     system_instruction=system_instruction,
                 )
-            except (api.DeepseekInsufficientBalance, api.GroqInsufficientBalance) as e:
-                provider = "DeepSeek" if isinstance(e, api.DeepseekInsufficientBalance) else "Groq"
+            except (
+                api.DeepseekInsufficientBalance,
+                api.GroqInsufficientBalance,
+                api.OpenRouterInsufficientBalance,
+            ) as e:
+                if isinstance(e, api.DeepseekInsufficientBalance):
+                    provider = "DeepSeek"
+                elif isinstance(e, api.GroqInsufficientBalance):
+                    provider = "Groq"
+                else:
+                    provider = "OpenRouter"
+
                 console.print(
                     i18n.tr(
                         language,

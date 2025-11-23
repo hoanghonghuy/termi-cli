@@ -49,7 +49,46 @@ def load_config() -> dict:
         ],
         "personas": {},
         "database": {},
-        "profiles": {},
+        "profiles": {
+            # Preset profile: dùng bộ model OpenRouter free mạnh cho coding.
+            # Có thể kích hoạt nhanh bằng cờ --profile openrouter-free-coding
+            "openrouter-free-coding": {
+                "default_model": "openai/gpt-4o-mini",
+                "code_model": "meta-llama/llama-3.1-70b-instruct",
+                "commit_model": "openai/gpt-4o-mini",
+                # Agent vẫn dùng Gemini để tận dụng tool-calls an toàn hơn
+                "agent_model": "models/gemini-pro-latest",
+                "language": "vi",
+                "default_system_instruction": "You are a helpful AI assistant.",
+            },
+            "dev-groq-fast-coding": {
+                "default_model": "groq-chat",
+                "code_model": "groq-llama3-8b-8192",
+                "commit_model": "groq-chat",
+                "agent_model": "models/gemini-pro-latest",
+                "language": "vi",
+                "default_system_instruction": "You are a helpful AI assistant.",
+            },
+            "deepseek-reasoning-heavy": {
+                "default_model": "deepseek-reasoner",
+                "code_model": "deepseek-reasoner",
+                "commit_model": "deepseek-chat",
+                "agent_model": "models/gemini-pro-latest",
+                "language": "vi",
+                "default_system_instruction": "You are a helpful AI assistant.",
+            },
+        },
+        # Gán nhãn mặc định cho một số model OpenRouter phổ biến (free tier / OSS)
+        "model_labels": {
+            "openai/gpt-4o-mini": "(free tier)",
+            "google/gemma-2-9b-it": "(free tier)",
+            "google/gemma-2-27b-it": "(free tier)",
+            "meta-llama/llama-3.1-8b-instruct": "(free tier)",
+            "meta-llama/llama-3.1-70b-instruct": "(free tier)",
+            "mistralai/mixtral-8x7b-instruct": "(free tier)",
+            "mistralai/mistral-7b-instruct": "(free tier)",
+            "qwen/qwen2.5-7b-instruct": "(free tier)",
+        },
     }
     
     final_config = {**defaults, **config_data}

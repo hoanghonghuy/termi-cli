@@ -108,6 +108,14 @@ def create_parser():
         metavar="NAME",
         help="Xóa một profile cấu hình nhanh theo tên.",
     )
+    model_group.add_argument(
+        "--reset-config",
+        action="store_true",
+        help=(
+            "Xóa file config hiện tại và khôi phục cấu hình mặc định "
+            "(config.json trong TERMI_CLI_HOME hoặc thư mục hiện tại)."
+        ),
+    )
     
     # --- Quản lý Persona ---
     persona_group = parser.add_argument_group("Quản lý Persona")

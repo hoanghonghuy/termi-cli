@@ -109,7 +109,7 @@ In both cases, the CLI will show you the proposed `git commit` command and ask f
 | Flag | Description |
 | :--- | :--- |
 | `-m, --model <NAME>` | Chọn model cho phiên hiện tại (ghi đè tạm thởi `default_model` trong config). Hỗ trợ Gemini, DeepSeek (`deepseek-*`), Groq (`groq-*`). |
-| `--set-model` | Chạy wizard để chọn `default_model`, `code_model`, `commit_model` với gợi ý provider. |
+| `--set-model` | Chạy wizard nhiều provider (Gemini / DeepSeek / Groq / OpenRouter) để chọn `default_model`, `code_model`, `commit_model` – với OpenRouter có thể chọn nhanh từ danh sách gợi ý hoặc nhập ID model thủ công. |
 | `--list-models` | Liệt kê các model Gemini khả dụng (kèm cột Provider). |
 | `--diagnostics`, `--whoami` | Hiển thị model đang dùng cho default/code/commit/agent, provider của từng model và số lượng API key (không lộ giá trị). |
 | `--verbose` / `--quiet` | Điều chỉnh độ ồn log trên console (INFO hoặc chỉ ERROR). |
@@ -259,6 +259,19 @@ Profiles cho phép lưu nhanh và áp dụng lại một bộ cấu hình model/
 
   Profile sẽ thiết lập lại `default_model`, `code_model`, `commit_model`, `agent_model`, `language`,
   và `default_system_instruction` trong runtime của phiên hiện tại.
+
+- Ngoài các profile do bạn tự lưu, Termi đi kèm sẵn một preset:
+
+  ```bash
+  # Dùng bộ model OpenRouter free tối ưu cho coding
+  termi --profile openrouter-free-coding --chat
+  ```
+
+  Preset này map:
+  - `default_model` → `openai/gpt-4o-mini`
+  - `code_model` → `meta-llama/llama-3.1-70b-instruct`
+  - `commit_model` → `openai/gpt-4o-mini`
+  - `agent_model` → `models/gemini-pro-latest`
 
 - Xóa profile:
 

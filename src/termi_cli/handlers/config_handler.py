@@ -13,37 +13,64 @@ from termi_cli.config import save_config
 def model_selection_wizard(console: Console, config: dict):
     """UI chọn model nâng cao: default_model, code_model, commit_model.
 
-    - Bước 1: chọn default_model.
-    - Bước 2: tùy chọn chọn code_model (Enter để dùng cùng default).
-    - Bước 3: tùy chọn chọn commit_model (Enter để dùng cùng code_model/default).
+    Bước đầu tiên: chọn provider (Gemini / DeepSeek / Groq / OpenRouter),
+    sau đó chọn model tương ứng cho từng vai trò.
     """
     language = config.get("language", "vi")
-    console.print(i18n.tr(language, "config_fetching_models"))
+    model_labels = config.get("model_labels") or {}
 
-    try:
-        models = api.get_available_models()
-        if not models:
-            console.print(i18n.tr(language, "config_no_models_found"))
-            return
-    except Exception as e:
-        console.print(i18n.tr(language, "config_error_fetching_models", error=e))
-        return
+    providers = [
+        ("gemini", "🟢 Gemini", i18n.tr(language, "config_provider_desc_gemini")),
+        ("deepseek", "🟣 DeepSeek", i18n.tr(language, "config_provider_desc_deepseek")),
+        ("groq", "🟠 Groq", i18n.tr(language, "config_provider_desc_groq")),
+        ("openrouter", "🔵 OpenRouter", i18n.tr(language, "config_provider_desc_openrouter")),
+    ]
 
-    stable_models = sorted([m for m in models if "preview" not in m and "exp" not in m])
-    preview_models = sorted([m for m in models if "preview" in m or "exp" in m])
-    sorted_models = stable_models + preview_models
-
-    table = Table(title=i18n.tr(language, "config_model_selection_title"))
+    table = Table(title=i18n.tr(language, "config_provider_selection_title"))
     table.add_column("#", style="cyan")
-    table.add_column("Model Name", style="magenta")
-    for i, model_name in enumerate(sorted_models):
-        table.add_row(str(i + 1), model_name)
+    table.add_column("Provider", style="green")
+    table.add_column("Mô tả" if language == "vi" else "Description", style="magenta")
+    for idx, (_, label, desc) in enumerate(providers, start=1):
+        table.add_row(str(idx), label, desc)
     console.print(table)
 
-    # Gợi ý nhanh về cách chọn giữa flash/pro cho Gemini
-    console.print(i18n.tr(language, "config_model_quick_tips"))
+    while True:
+        try:
+            choice_str = console.input(
+                i18n.tr(language, "config_provider_select_prompt"),
+                markup=False,
+            ).strip()
+            choice = int(choice_str) - 1
+            if 0 <= choice < len(providers):
+                provider_key = providers[choice][0]
+                break
+            console.print(i18n.tr(language, "config_invalid_choice"))
+        except ValueError:
+            console.print(i18n.tr(language, "config_please_enter_number"))
+        except (KeyboardInterrupt, EOFError):
+            console.print(i18n.tr(language, "config_selection_cancelled"))
+            return
 
-    def _select_index(prompt_key: str, allow_blank: bool = False, default_index: int | None = None):
+    def _print_provider_hint(model_name: str):
+        if not isinstance(model_name, str):
+            console.print(i18n.tr(language, "config_model_provider_hint_gemini"))
+            return
+        if model_name.startswith("deepseek-"):
+            console.print(i18n.tr(language, "config_model_provider_hint_deepseek"))
+        elif model_name.startswith("groq-"):
+            console.print(i18n.tr(language, "config_model_provider_hint_groq"))
+        elif api.is_openrouter_model(model_name):
+            console.print(i18n.tr(language, "config_model_provider_hint_openrouter"))
+        else:
+            console.print(i18n.tr(language, "config_model_provider_hint_gemini"))
+
+    def _display_name(model_name: str) -> str:
+        label = model_labels.get(model_name)
+        if label:
+            return f"{model_name} {label}"
+        return model_name
+
+    def _select_index(sorted_models: list[str], prompt_key: str, allow_blank: bool = False, default_index: int | None = None):
         while True:
             try:
                 choice_str = console.input(i18n.tr(language, prompt_key), markup=False).strip()
@@ -59,20 +86,235 @@ def model_selection_wizard(console: Console, config: dict):
                 console.print(i18n.tr(language, "config_selection_cancelled"))
                 return None
 
-    def _print_provider_hint(model_name: str):
-        """In ra hint provider dựa trên prefix model."""
-        if not isinstance(model_name, str):
-            console.print(i18n.tr(language, "config_model_provider_hint_gemini"))
-            return
-        if model_name.startswith("deepseek-"):
-            console.print(i18n.tr(language, "config_model_provider_hint_deepseek"))
-        elif model_name.startswith("groq-"):
-            console.print(i18n.tr(language, "config_model_provider_hint_groq"))
-        else:
-            console.print(i18n.tr(language, "config_model_provider_hint_gemini"))
+    # --- Nhánh Gemini: dùng get_available_models như trước ---
+    if provider_key == "gemini":
+        console.print(i18n.tr(language, "config_fetching_models"))
 
-    # Bước 1: chọn default_model
-    default_index = _select_index("config_select_model_prompt")
+        try:
+            models = api.get_available_models()
+            if not models:
+                console.print(i18n.tr(language, "config_no_models_found"))
+                return
+        except Exception as e:
+            console.print(i18n.tr(language, "config_error_fetching_models", error=e))
+            return
+
+        stable_models = sorted([m for m in models if "preview" not in m and "exp" not in m])
+        preview_models = sorted([m for m in models if "preview" in m or "exp" in m])
+        sorted_models = stable_models + preview_models
+
+        table = Table(title=i18n.tr(language, "config_model_selection_title"))
+        table.add_column("#", style="cyan")
+        table.add_column("Model Name", style="magenta")
+        for i, model_name in enumerate(sorted_models):
+            table.add_row(str(i + 1), _display_name(model_name))
+        console.print(table)
+
+        console.print(i18n.tr(language, "config_model_quick_tips"))
+
+        default_index = _select_index(sorted_models, "config_select_model_prompt")
+        if default_index is None:
+            return
+
+        default_model = sorted_models[default_index]
+        config["default_model"] = default_model
+
+        fallback_list = [default_model]
+        for m in stable_models:
+            if m != default_model and m not in fallback_list:
+                fallback_list.append(m)
+        config["model_fallback_order"] = fallback_list
+
+        console.print(i18n.tr(language, "config_default_model_set", model=default_model))
+        _print_provider_hint(default_model)
+        console.print(i18n.tr(language, "config_fallback_order_updated"))
+
+        code_index = _select_index(
+            sorted_models,
+            "config_select_code_model_prompt",
+            allow_blank=True,
+            default_index=default_index,
+        )
+        if code_index is None:
+            save_config(config)
+            return
+
+        code_model = sorted_models[code_index]
+        config["code_model"] = code_model
+        if code_index == default_index:
+            console.print(i18n.tr(language, "config_code_model_same_as_default"))
+        else:
+            console.print(i18n.tr(language, "config_code_model_set", model=code_model))
+        _print_provider_hint(code_model)
+
+        baseline_index = code_index
+        commit_index = _select_index(
+            sorted_models,
+            "config_select_commit_model_prompt",
+            allow_blank=True,
+            default_index=baseline_index,
+        )
+        if commit_index is None:
+            save_config(config)
+            return
+
+        commit_model = sorted_models[commit_index]
+        config["commit_model"] = commit_model
+        if commit_index == baseline_index:
+            console.print(i18n.tr(language, "config_commit_model_same_as_code_or_default"))
+        else:
+            console.print(i18n.tr(language, "config_commit_model_set", model=commit_model))
+        _print_provider_hint(commit_model)
+
+        save_config(config)
+        return
+
+    # --- Nhánh DeepSeek / Groq: dùng danh sách static đơn giản ---
+    if provider_key == "deepseek":
+        stable_models = sorted([
+            "deepseek-chat",
+            "deepseek-reasoner",
+        ])
+        sorted_models = stable_models
+    elif provider_key == "groq":
+        stable_models = sorted([
+            "groq-chat",
+            "groq-llama-3.3-70b-versatile",
+            "groq-llama3-8b-8192",
+        ])
+        sorted_models = stable_models
+    else:
+        # --- Nhánh OpenRouter: hiển thị danh sách gợi ý + cho phép nhập thủ công ID model ---
+        openrouter_models = [
+            "openai/gpt-4o-mini",
+            "google/gemma-2-9b-it",
+            "google/gemma-2-27b-it",
+            "meta-llama/llama-3.1-8b-instruct",
+            "meta-llama/llama-3.1-70b-instruct",
+            "mistralai/mistral-7b-instruct",
+            "mistralai/mixtral-8x7b-instruct",
+            "qwen/qwen2.5-7b-instruct",
+        ]
+        stable_models = sorted(openrouter_models)
+        sorted_models = stable_models
+
+        def _openrouter_usage_hint(model_name: str) -> str:
+            if model_name == "openai/gpt-4o-mini":
+                return i18n.tr(language, "config_model_hint_openrouter_gpt4o_mini")
+            if model_name == "meta-llama/llama-3.1-8b-instruct":
+                return i18n.tr(language, "config_model_hint_openrouter_llama_8b")
+            if model_name == "meta-llama/llama-3.1-70b-instruct":
+                return i18n.tr(language, "config_model_hint_openrouter_llama_70b")
+            if model_name == "mistralai/mixtral-8x7b-instruct":
+                return i18n.tr(language, "config_model_hint_openrouter_mixtral")
+            return ""
+
+        table = Table(title=i18n.tr(language, "config_model_selection_title"))
+        table.add_column("#", style="cyan")
+        table.add_column("Model Name", style="magenta")
+        usage_col = "Gợi ý sử dụng" if language == "vi" else "Usage hint"
+        table.add_column(usage_col, style="green")
+        for i, model_name in enumerate(sorted_models):
+            table.add_row(str(i + 1), _display_name(model_name), _openrouter_usage_hint(model_name))
+        console.print(table)
+        console.print(i18n.tr(language, "config_openrouter_intro_examples"))
+
+        def _ask_openrouter_model(prompt_key: str, allow_blank: bool, baseline: str | None = None) -> str | None:
+            while True:
+                try:
+                    choice_str = console.input(i18n.tr(language, prompt_key), markup=False).strip()
+                    if allow_blank and choice_str == "":
+                        return baseline
+                    # Cho phép chọn theo số thứ tự trong bảng gợi ý
+                    if choice_str.isdigit():
+                        idx = int(choice_str) - 1
+                        if 0 <= idx < len(sorted_models):
+                            return sorted_models[idx]
+                        console.print(i18n.tr(language, "config_invalid_choice"))
+                        continue
+                    # Nếu không phải số, coi như ID model đầy đủ
+                    if not api.is_openrouter_model(choice_str):
+                        console.print(i18n.tr(language, "config_openrouter_invalid_model"))
+                        continue
+                    return choice_str
+                except (KeyboardInterrupt, EOFError):
+                    return None
+
+        # Bước 1: default_model (bắt buộc)
+        default_model = _ask_openrouter_model("config_openrouter_default_model_prompt", allow_blank=False)
+        if default_model is None:
+            console.print(i18n.tr(language, "config_selection_cancelled"))
+            return
+
+        config["default_model"] = default_model
+        config["model_fallback_order"] = [default_model]
+        console.print(i18n.tr(language, "config_default_model_set", model=default_model))
+        _print_provider_hint(default_model)
+
+        # Bước 2: code_model (Enter => dùng cùng default_model)
+        code_model = _ask_openrouter_model(
+            "config_openrouter_code_model_prompt",
+            allow_blank=True,
+            baseline=default_model,
+        )
+        if code_model is None:
+            save_config(config)
+            console.print(i18n.tr(language, "config_selection_cancelled"))
+            return
+
+        config["code_model"] = code_model
+        if code_model == default_model:
+            console.print(i18n.tr(language, "config_code_model_same_as_default"))
+        else:
+            console.print(i18n.tr(language, "config_code_model_set", model=code_model))
+
+        # Bước 3: commit_model (Enter => dùng cùng code_model/default_model)
+        baseline = config.get("code_model", default_model)
+        commit_model = _ask_openrouter_model(
+            "config_openrouter_commit_model_prompt",
+            allow_blank=True,
+            baseline=baseline,
+        )
+        if commit_model is None:
+            save_config(config)
+            console.print(i18n.tr(language, "config_selection_cancelled"))
+            return
+
+        config["commit_model"] = commit_model
+        if commit_model == baseline:
+            console.print(i18n.tr(language, "config_commit_model_same_as_code_or_default"))
+        else:
+            console.print(i18n.tr(language, "config_commit_model_set", model=commit_model))
+
+        save_config(config)
+        return
+
+    # DeepSeek / Groq: chọn model theo index giống Gemini nhưng không gọi API từ xa
+    def _static_model_usage_hint(model_name: str) -> str:
+        if provider_key == "deepseek":
+            if model_name == "deepseek-chat":
+                return i18n.tr(language, "config_model_hint_deepseek_chat")
+            if model_name == "deepseek-reasoner":
+                return i18n.tr(language, "config_model_hint_deepseek_reasoner")
+        elif provider_key == "groq":
+            if model_name == "groq-chat":
+                return i18n.tr(language, "config_model_hint_groq_chat")
+            if model_name == "groq-llama-3.3-70b-versatile":
+                return i18n.tr(language, "config_model_hint_groq_llama_3_3_70b")
+            if model_name == "groq-llama3-8b-8192":
+                return i18n.tr(language, "config_model_hint_groq_llama3_8b")
+        return ""
+
+    table = Table(title=i18n.tr(language, "config_model_selection_title"))
+    table.add_column("#", style="cyan")
+    table.add_column("Model Name", style="magenta")
+    usage_col = "Gợi ý sử dụng" if language == "vi" else "Usage hint"
+    table.add_column(usage_col, style="green")
+    for i, model_name in enumerate(sorted_models):
+        table.add_row(str(i + 1), _display_name(model_name), _static_model_usage_hint(model_name))
+    console.print(table)
+
+    default_index = _select_index(sorted_models, "config_select_model_prompt")
     if default_index is None:
         return
 
@@ -87,16 +329,14 @@ def model_selection_wizard(console: Console, config: dict):
 
     console.print(i18n.tr(language, "config_default_model_set", model=default_model))
     _print_provider_hint(default_model)
-    console.print(i18n.tr(language, "config_fallback_order_updated"))
 
-    # Bước 2: chọn code_model (Enter => dùng cùng default)
     code_index = _select_index(
+        sorted_models,
         "config_select_code_model_prompt",
         allow_blank=True,
         default_index=default_index,
     )
     if code_index is None:
-        # Người dùng hủy, giữ nguyên config vừa set default
         save_config(config)
         return
 
@@ -108,9 +348,9 @@ def model_selection_wizard(console: Console, config: dict):
         console.print(i18n.tr(language, "config_code_model_set", model=code_model))
     _print_provider_hint(code_model)
 
-    # Bước 3: chọn commit_model (Enter => dùng cùng code_model/default)
     baseline_index = code_index
     commit_index = _select_index(
+        sorted_models,
         "config_select_commit_model_prompt",
         allow_blank=True,
         default_index=baseline_index,
@@ -333,6 +573,8 @@ def show_diagnostics(console: Console, config: dict):
             return "DeepSeek"
         if model_name.startswith("groq-"):
             return "Groq"
+        if api.is_openrouter_model(model_name):
+            return "OpenRouter"
         return "Gemini"
 
     def _provider_label(model_name: str) -> str:
@@ -341,7 +583,9 @@ def show_diagnostics(console: Console, config: dict):
             "Gemini": "🟢 Gemini",
             "DeepSeek": "🟣 DeepSeek",
             "Groq": "🟠 Groq",
+            "OpenRouter": "🔵 OpenRouter",
         }
+
         return icons.get(name, name)
 
     title = (
@@ -388,6 +632,7 @@ def show_diagnostics(console: Console, config: dict):
         google_keys = _api.initialize_api_keys() or []
         deepseek_keys = []
         groq_keys = []
+        openrouter_keys = []
         try:
             deepseek_keys = _api.initialize_deepseek_api_keys() or []
         except Exception:
@@ -396,6 +641,10 @@ def show_diagnostics(console: Console, config: dict):
             groq_keys = _api.initialize_groq_api_keys() or []
         except Exception:
             groq_keys = []
+        try:
+            openrouter_keys = _api.initialize_openrouter_api_keys() or []
+        except Exception:
+            openrouter_keys = []
 
         console.print(
             i18n.tr(language, "diagnostics_google_keys", count=len(google_keys))
@@ -406,6 +655,10 @@ def show_diagnostics(console: Console, config: dict):
         console.print(
             i18n.tr(language, "diagnostics_groq_keys", count=len(groq_keys))
         )
+        console.print(
+            i18n.tr(language, "diagnostics_openrouter_keys", count=len(openrouter_keys))
+        )
+
     except Exception:
         # Không để lỗi diagnostics API key làm vỡ lệnh
         pass

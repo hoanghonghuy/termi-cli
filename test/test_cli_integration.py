@@ -3,14 +3,18 @@ import sys
 import json
 import subprocess
 from pathlib import Path
+from io import StringIO
 
 import chromadb
 from chromadb.config import Settings
+from rich.console import Console
 
 from termi_cli import cli as cli_module
 from termi_cli import __main__ as cli_entry
-from termi_cli.handlers import agent_handler
+from termi_cli import api
+from termi_cli.handlers import agent_handler, config_handler
 from termi_cli.utils import sanitize_filename
+from termi_cli.config import load_config
 
 
 def _run_cli(tmp_path: Path, args: list[str], env_extra: dict | None = None):
@@ -31,6 +35,9 @@ def _run_cli(tmp_path: Path, args: list[str], env_extra: dict | None = None):
         "GROQ_API_KEY",
         "GROQ_API_KEY_2ND",
         "GROQ_API_KEY_3RD",
+        "OPENROUTER_API_KEY",
+        "OPENROUTER_API_KEY_2ND",
+        "OPENROUTER_API_KEY_3RD",
     ]:
         env.pop(key, None)
 
@@ -83,6 +90,25 @@ def test_cli_reset_memory_uses_isolated_app_dir(tmp_path):
     assert "memory_db" in result.stdout
 
 
+def test_cli_reset_config_restores_defaults_in_isolated_home(tmp_path):
+    """--reset-config phải xoá config tuỳ biến và khôi phục giá trị mặc định."""
+    home = tmp_path / "home"
+    home.mkdir()
+
+    config_path = home / "config.json"
+    # Tạo một config tuỳ biến với default_model khác
+    custom_config = {"default_model": "deepseek-chat"}
+    config_path.write_text(json.dumps(custom_config, ensure_ascii=False), encoding="utf-8")
+
+    result = _run_cli(tmp_path, ["--reset-config"], {"TERMI_CLI_HOME": home})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert config_path.exists()
+
+    config_data = json.loads(config_path.read_text(encoding="utf-8"))
+    assert config_data.get("default_model") == "models/gemini-flash-latest"
+
+
 def test_cli_profile_save_list_and_remove_in_isolated_home(tmp_path):
     """Kiểm tra luồng save/list/rm profile qua CLI với TERMI_CLI_HOME tách biệt."""
     home = tmp_path / "home"
@@ -108,13 +134,10 @@ def test_cli_profile_save_list_and_remove_in_isolated_home(tmp_path):
     rm_result = _run_cli(tmp_path, ["--rm-profile", "dev-gemini"], {"TERMI_CLI_HOME": home})
     assert rm_result.returncode == 0, rm_result.stdout + rm_result.stderr
 
-    # Sau khi xoá, list-profiles phải báo không còn profile
+    # Sau khi xoá, list-profiles không còn hiển thị profile dev-gemini
     list_after_rm = _run_cli(tmp_path, ["--list-profiles"], {"TERMI_CLI_HOME": home})
     assert list_after_rm.returncode == 0, list_after_rm.stdout + list_after_rm.stderr
-    assert (
-        "Chưa có profile cấu hình nhanh nào được lưu." in list_after_rm.stdout
-        or "No quick configuration profiles have been saved yet." in list_after_rm.stdout
-    )
+    assert "dev-gemini" not in list_after_rm.stdout
 
 
 def test_cli_memory_search_returns_results(tmp_path):
@@ -221,3 +244,39 @@ def test_cli_agent_max_steps_passed_to_agent(tmp_path, monkeypatch, mocker):
 
     assert captured["max_steps"] == 5
     assert captured["prompt"] == "Do something important"
+
+
+def test_model_selection_wizard_openrouter_quick_flow(tmp_path, monkeypatch):
+    """Wizard --set-model với provider OpenRouter cho phép chọn nhanh từ danh sách gợi ý."""
+    home = tmp_path / "home"
+    home.mkdir()
+
+    # Đảm bảo config.json nằm trong TERMI_CLI_HOME tạm
+    monkeypatch.setenv("TERMI_CLI_HOME", str(home))
+    config = load_config()
+
+    # Console ghi ra StringIO để test không in ra stdout thật
+    buf = StringIO()
+    console = Console(file=buf, force_terminal=False, no_color=True)
+
+    # Chuỗi input: 4 (OpenRouter), 1 (model gợi ý đầu tiên), "" (code_model dùng default), "" (commit_model dùng code)
+    inputs = iter(["4", "1", "", ""])
+
+    def fake_input(prompt: str = "", markup: bool = True):  # noqa: ARG001
+        try:
+            return next(inputs)
+        except StopIteration:  # Phòng trường hợp wizard hỏi thêm
+            return ""
+
+    monkeypatch.setattr(console, "input", fake_input)
+
+    config_handler.model_selection_wizard(console, config)
+
+    # Kiểm tra config đã được cập nhật với một OpenRouter model hợp lệ
+    default_model = config.get("default_model")
+    code_model = config.get("code_model")
+    commit_model = config.get("commit_model")
+
+    assert api.is_openrouter_model(default_model)
+    assert code_model == default_model
+    assert commit_model == code_model

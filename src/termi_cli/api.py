@@ -42,8 +42,6 @@ class DeepseekInsufficientBalance(Exception):
     pass
 
 
-# --- Groq Cloud integration (HTTP OpenAI-compatible) ---
-
 _groq_api_keys: list[str] = []
 _current_groq_key_index: int = 0
 _last_groq_call_ts: float | None = None
@@ -51,6 +49,15 @@ _last_groq_call_ts: float | None = None
 
 class GroqInsufficientBalance(Exception):
     """Báo hiệu Groq Cloud trả về lỗi thiếu credit (HTTP 402 / Insufficient)."""
+    pass
+
+
+_openrouter_api_keys: list[str] = []
+_current_openrouter_key_index: int = 0
+_last_openrouter_call_ts: float | None = None
+
+
+class OpenRouterInsufficientBalance(Exception):
     pass
 
 
@@ -340,6 +347,140 @@ def _normalize_groq_model(model_name: str) -> str:
     return alias_map.get(raw, raw)
 
 
+def is_openrouter_model(model_name: str) -> bool:
+    if not isinstance(model_name, str):
+        return False
+    if model_name.startswith("models/"):
+        return False
+    return "/" in model_name
+
+
+def initialize_openrouter_api_keys() -> list[str]:
+    global _openrouter_api_keys, _current_openrouter_key_index
+    _openrouter_api_keys = []
+    _current_openrouter_key_index = 0
+
+    primary = os.getenv("OPENROUTER_API_KEY")
+    if primary:
+        _openrouter_api_keys.append(primary)
+
+    i = 2
+    while True:
+        key_name = (
+            f"OPENROUTER_API_KEY_{i}ND" if i == 2
+            else f"OPENROUTER_API_KEY_{i}RD" if i == 3
+            else f"OPENROUTER_API_KEY_{i}TH"
+        )
+        backup = os.getenv(key_name)
+        if not backup:
+            break
+        _openrouter_api_keys.append(backup)
+        i += 1
+
+    return _openrouter_api_keys
+
+
+def switch_to_next_openrouter_key() -> str:
+    global _openrouter_api_keys, _current_openrouter_key_index
+    if not _openrouter_api_keys:
+        initialize_openrouter_api_keys()
+        if not _openrouter_api_keys:
+            raise RuntimeError("No OpenRouter API key configured (OPENROUTER_API_KEY...).")
+
+    _current_openrouter_key_index = (_current_openrouter_key_index + 1) % len(_openrouter_api_keys)
+    return f"OpenRouter key #{_current_openrouter_key_index + 1}"
+
+
+def _resilient_openrouter_api_call(model_name: str, messages: list[dict]) -> dict:
+    global _openrouter_api_keys, _current_openrouter_key_index, _last_openrouter_call_ts
+
+    if not _openrouter_api_keys:
+        initialize_openrouter_api_keys()
+        if not _openrouter_api_keys:
+            raise RuntimeError("No OpenRouter API key configured (OPENROUTER_API_KEY...).")
+
+    initial_index = _current_openrouter_key_index
+    url = "https://openrouter.ai/api/v1/chat/completions"
+
+    while True:
+        api_key = _openrouter_api_keys[_current_openrouter_key_index]
+
+        now = time.time()
+        min_interval = 1.0
+        is_pytest = "PYTEST_CURRENT_TEST" in os.environ
+        if _last_openrouter_call_ts is not None and not is_pytest:
+            elapsed = now - _last_openrouter_call_ts
+            if elapsed < min_interval:
+                time.sleep(min_interval - elapsed)
+
+        payload = {
+            "model": model_name,
+            "messages": messages,
+            "stream": False,
+        }
+        data = json.dumps(payload).encode("utf-8")
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+
+        referer = os.getenv("OPENROUTER_SITE_URL")
+        title = os.getenv("OPENROUTER_SITE_NAME")
+        if referer:
+            headers["HTTP-Referer"] = referer
+        if title:
+            headers["X-Title"] = title
+
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+
+        try:
+            _last_openrouter_call_ts = time.time()
+            with urllib.request.urlopen(req, timeout=60) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")
+                return json.loads(body)
+
+        except urllib.error.HTTPError as e:
+            body = e.read().decode("utf-8", errors="ignore")
+            lower = body.lower()
+
+            if e.code == 402 or (
+                "insufficient" in lower
+                and ("credit" in lower or "balance" in lower or "funds" in lower)
+            ):
+                raise OpenRouterInsufficientBalance(body) from e
+
+            is_quota_or_rate = (
+                e.code == 429
+                or "rate limit" in lower
+                or "quota" in lower
+                or "too many requests" in lower
+            )
+
+            if is_quota_or_rate and len(_openrouter_api_keys) > 1:
+                _console.print(
+                    f"[yellow]⚠️ OpenRouter quota/rate-limit error with key #{_current_openrouter_key_index + 1}. Đang chuyển sang key tiếp theo...[/yellow]"
+                )
+                msg = switch_to_next_openrouter_key()
+                if _current_openrouter_key_index == initial_index:
+                    _console.print(
+                        "[bold red]❌ Đã thử tất cả OpenRouter API key nhưng đều gặp lỗi quota/rate-limit.[/bold red]"
+                    )
+                    raise RuntimeError("All OpenRouter API keys exhausted") from e
+
+                _console.print(f"[green]✅ Đã chuyển sang {msg}. Thử lại...[/green]")
+                continue
+
+            _console.print(
+                f"[bold red]Lỗi HTTP khi gọi OpenRouter (status={e.code}): {body}[/bold red]"
+            )
+            raise
+
+        except urllib.error.URLError as e:
+            _console.print(f"[bold red]Không thể kết nối tới OpenRouter API: {e}[/bold red]")
+            raise
+
+
 def generate_text(model_name: str, prompt: str, system_instruction: str | None = None) -> str:
     """Sinh text thuần từ một model, bọc qua resilient_generate_content + get_response_text.
 
@@ -350,25 +491,37 @@ def generate_text(model_name: str, prompt: str, system_instruction: str | None =
       retry + xoay API key riêng (DEEPSEEK_API_KEY, DEEPSEEK_API_KEY_2ND, ...).
     - Nhánh ``groq-*``: gọi Groq Chat Completions (OpenAI-compatible) với bộ
       Groq API key riêng (GROQ_API_KEY, GROQ_API_KEY_2ND, ...).
+    - Nhánh ``openrouter-*``: gọi OpenRouter Chat Completions (OpenAI-compatible) với bộ
+      OpenRouter API key riêng (OPENROUTER_API_KEY, OPENROUTER_API_KEY_2ND, ...).
     - Các model còn lại: dùng Gemini như trước đây.
     """
-    if model_name.startswith("deepseek-"):
+    if is_openrouter_model(model_name):
         messages: list[dict] = []
+        if system_instruction:
+            messages.append({"role": "system", "content": system_instruction})
+        messages.append({"role": "user", "content": prompt})
+
+        response = _resilient_openrouter_api_call(model_name, messages)
+        try:
+            return response["choices"][0]["message"]["content"]
+        except Exception:
+            return json.dumps(response, ensure_ascii=False)
+
+    if isinstance(model_name, str) and model_name.startswith("deepseek-"):
+        messages = []
         if system_instruction:
             messages.append({"role": "system", "content": system_instruction})
         messages.append({"role": "user", "content": prompt})
 
         response = _resilient_deepseek_api_call(model_name, messages)
         try:
-            # OpenAI-compatible schema: choices[0].message.content
             return response["choices"][0]["message"]["content"]
         except Exception:
-            # Nếu format không như mong đợi, trả body thô để debug
             return json.dumps(response, ensure_ascii=False)
 
-    if model_name.startswith("groq-"):
+    if isinstance(model_name, str) and model_name.startswith("groq-"):
         groq_model = _normalize_groq_model(model_name)
-        messages: list[dict] = []
+        messages = []
         if system_instruction:
             messages.append({"role": "system", "content": system_instruction})
         messages.append({"role": "user", "content": prompt})
@@ -379,7 +532,6 @@ def generate_text(model_name: str, prompt: str, system_instruction: str | None =
         except Exception:
             return json.dumps(response, ensure_ascii=False)
 
-    # Nhánh mặc định: dùng Gemini thông qua google.generativeai
     model_kwargs = {}
     if system_instruction is not None:
         model_kwargs["system_instruction"] = system_instruction
