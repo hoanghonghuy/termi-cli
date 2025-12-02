@@ -172,13 +172,14 @@ def handle_history_summary(
 
     model_name = config.get("default_model")
 
-    # Nếu default_model là HTTP provider (DeepSeek/Groq/OpenRouter), tóm tắt trực tiếp qua HTTP.
+    # Nếu default_model là HTTP provider (DeepSeek/Groq/OpenRouter/Ollama), tóm tắt trực tiếp qua HTTP.
     use_http = (
         isinstance(model_name, str)
         and (
             model_name.startswith("deepseek-")
             or model_name.startswith("groq-")
             or api.is_openrouter_model(model_name)
+            or api.is_ollama_model(model_name)
         )
     )
 

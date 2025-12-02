@@ -45,6 +45,42 @@ This document describes the advanced features that are only briefly mentioned in
   - `--add-persona`, `--list-personas`, `--rm-persona`
   - `--add-instruct`, `--list-instructs`, `--rm-instruct`
 
+## Local models via Ollama
+
+Termi can talk to local models exposed by [Ollama](https://ollama.com/) using its OpenAI-compatible Chat Completions API.
+
+Basic steps:
+
+1. Install Ollama and pull a model, for example:
+
+   ```bash
+   ollama pull qwen3:8b
+   ```
+
+2. Make sure the Ollama server is running (by default on `http://127.0.0.1:11434`).
+
+3. In your `config.json`, set a model such as:
+
+   ```json
+   { "default_model": "ollama/qwen3:8b" }
+   ```
+
+   You can also use `ollama/qwen3:8b` for `agent_model` if you want the Agent to run on Qwen locally.
+
+4. Optionally override the Ollama base URL via:
+
+   ```bash
+   export OLLAMA_BASE_URL="http://localhost:11434"
+   ```
+
+You can then use this model with any Termi command that accepts `-m/--model`, for example:
+
+```bash
+termi -m ollama/qwen3:8b "Explain this file"
+termi --chat -m ollama/qwen3:8b
+termi --agent -m ollama/qwen3:8b "Refactor this module"
+```
+
 ## Language & i18n
 
 - Default UI language is Vietnamese (`"language": "vi"`).

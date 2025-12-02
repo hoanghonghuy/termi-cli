@@ -116,7 +116,7 @@ def _get_gemini_fallback_model(config: dict) -> str:
 
 
 def _is_http_model_name(model_name: str) -> bool:
-    """Kiểm tra xem model thuộc nhóm HTTP provider (DeepSeek/Groq/OpenRouter) hay không."""
+    """Kiểm tra xem model thuộc nhóm HTTP provider (DeepSeek/Groq/OpenRouter/Ollama) hay không."""
     if not isinstance(model_name, str):
         return False
     if model_name.startswith("deepseek-"):
@@ -124,6 +124,8 @@ def _is_http_model_name(model_name: str) -> bool:
     if model_name.startswith("groq-"):
         return True
     if api.is_openrouter_model(model_name):
+        return True
+    if api.is_ollama_model(model_name):
         return True
     return False
 
@@ -252,11 +254,12 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
     system_instruction_str = core_handler.build_system_instruction(config, args)
     model_name = args.model or config.get("default_model")
 
-    # Nếu là HTTP provider (DeepSeek/Groq/OpenRouter) thì không dùng tool-calls Gemini, gọi trực tiếp generate_text
+    # Nếu là HTTP provider (DeepSeek/Groq/OpenRouter/Ollama) thì không dùng tool-calls Gemini, gọi trực tiếp generate_text
     if isinstance(model_name, str) and (
         model_name.startswith("deepseek-")
         or model_name.startswith("groq-")
         or api.is_openrouter_model(model_name)
+        or api.is_ollama_model(model_name)
     ):
         if not prompt_text:
             return
@@ -614,11 +617,12 @@ def main(provided_args=None):
 
             model_name = args.model or config.get("default_model")
 
-            # Nếu model là HTTP provider (DeepSeek/Groq/OpenRouter), dùng luồng chat riêng qua HTTP API.
+            # Nếu model là HTTP provider (DeepSeek/Groq/OpenRouter/Ollama), dùng luồng chat riêng qua HTTP API.
             if isinstance(model_name, str) and (
                 model_name.startswith("deepseek-")
                 or model_name.startswith("groq-")
                 or api.is_openrouter_model(model_name)
+                or api.is_ollama_model(model_name)
             ):
                 chat_handler.run_chat_mode_deepseek(console, config, args, system_instruction_str)
             else:

@@ -1,7 +1,7 @@
 # Termi – Multi‑Provider AI CLI
 
 ## Introduction
-Termi is a multi‑provider AI Agent Command-Line Interface (CLI) that supports **Google Gemini**, **DeepSeek**, **Groq**, and **OpenRouter** (HTTP‑compatible). It helps you run AI‑assisted workflows, manage code, and work with files directly from your terminal.
+Termi is a multi‑provider AI Agent Command-Line Interface (CLI) that supports **Google Gemini**, **DeepSeek**, **Groq**, **OpenRouter** (HTTP‑compatible), and **Ollama** (local models such as Qwen3:8B). It helps you run AI‑assisted workflows, manage code, and work with files directly from your terminal.
 
 ## Quick installation
 
@@ -46,6 +46,7 @@ Use `termi --help` to see all available flags and commands.
 - **DeepSeek**: models starting with `deepseek-*` – HTTP OpenAI‑compatible endpoints.
 - **Groq**: models starting with `groq-*` – HTTP OpenAI‑compatible endpoints (with aliases such as `groq-chat`).
 - **OpenRouter**: OpenAI‑compatible HTTP models referenced by IDs like `openai/gpt-4o-mini`.
+- **Ollama (local)**: models referenced like `ollama/qwen3:8b` – run completely on your machine via Ollama's OpenAI‑compatible API.
 
 When an HTTP provider (DeepSeek/Groq/OpenRouter) reports **Insufficient Balance**, Termi automatically falls back to a safe Gemini model with a clear notice, including during the Agent's initial plan analysis phase.
 

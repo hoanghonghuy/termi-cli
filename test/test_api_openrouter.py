@@ -11,6 +11,7 @@ from termi_cli import api
         ("groq-llama-3.1-70b", False),
         ("openai/gpt-4o-mini", True),
         ("meta-llama/llama-3.3-70b-instruct", True),
+        ("ollama/qwen3:8b", False),
     ],
 )
 def test_is_openrouter_model_classification(model_name, expected):

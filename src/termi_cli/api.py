@@ -42,6 +42,9 @@ _console = Console()
 _last_free_tier_call_ts: float | None = None
 logger = logging.getLogger(__name__)
 
+# Base URL cho Ollama OpenAI-compatible API (local). Có thể override bằng OLLAMA_BASE_URL.
+OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
+
 # --- DeepSeek integration (HTTP API, OpenAI-compatible) ---
 
 _deepseek_api_keys: list[str] = []
@@ -364,6 +367,9 @@ def is_openrouter_model(model_name: str) -> bool:
         return False
     if model_name.startswith("models/"):
         return False
+    # Loại trừ prefix ollama/ vì đây là provider local riêng, không phải OpenRouter.
+    if model_name.startswith("ollama/"):
+        return False
     return "/" in model_name
 
 
@@ -493,6 +499,56 @@ def _resilient_openrouter_api_call(model_name: str, messages: list[dict]) -> dic
             raise
 
 
+def is_ollama_model(model_name: str) -> bool:
+    """Kiểm tra model có thuộc nhóm Ollama local hay không.
+
+    Quy ước: model_name bắt đầu bằng "ollama/", phần sau là tên model thực tế trong Ollama,
+    ví dụ: "ollama/qwen3:8b".
+    """
+
+    return isinstance(model_name, str) and model_name.startswith("ollama/")
+
+
+def _ollama_chat_completions(model_name: str, messages: list[dict]) -> dict:
+    """Gọi Ollama Chat Completions (OpenAI-compatible) cho các model local.
+
+    - Sử dụng endpoint OpenAI-compatible mặc định: {OLLAMA_BASE_URL}/v1/chat/completions.
+    - model_name là tên model trong Ollama (ví dụ: "qwen3:8b").
+    - Không có khái niệm quota/InsufficientBalance, chỉ log lỗi HTTP/kết nối.
+    """
+
+    base_url = OLLAMA_BASE_URL.rstrip("/")
+    url = f"{base_url}/v1/chat/completions"
+
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "stream": False,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    headers = {
+        "Content-Type": "application/json",
+        # Ollama OpenAI-compatible thường yêu cầu header Authorization, giá trị bất kỳ.
+        "Authorization": "Bearer ollama",
+    }
+
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+            return json.loads(body)
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")
+        _console.print(
+            f"[bold red]Lỗi HTTP khi gọi Ollama (status={e.code}): {body}[/bold red]"
+        )
+        raise
+    except urllib.error.URLError as e:
+        _console.print(f"[bold red]Không thể kết nối tới Ollama API: {e}[/bold red]")
+        raise
+
+
 def generate_text(model_name: str, prompt: str, system_instruction: str | None = None) -> str:
     """Sinh text thuần từ một model, bọc qua resilient_generate_content + get_response_text.
 
@@ -503,10 +559,27 @@ def generate_text(model_name: str, prompt: str, system_instruction: str | None =
       retry + xoay API key riêng (DEEPSEEK_API_KEY, DEEPSEEK_API_KEY_2ND, ...).
     - Nhánh ``groq-*``: gọi Groq Chat Completions (OpenAI-compatible) với bộ
       Groq API key riêng (GROQ_API_KEY, GROQ_API_KEY_2ND, ...).
-    - Nhánh ``openrouter-*``: gọi OpenRouter Chat Completions (OpenAI-compatible) với bộ
-      OpenRouter API key riêng (OPENROUTER_API_KEY, OPENROUTER_API_KEY_2ND, ...).
+    - Nhánh OpenRouter: model_name dạng ``provider/model`` (không phải ``models/*``),
+      dùng OpenRouter Chat Completions (OpenAI-compatible) với bộ OpenRouter API key riêng
+      (OPENROUTER_API_KEY, OPENROUTER_API_KEY_2ND, ...).
+    - Nhánh Ollama local: model_name dạng ``ollama/<model-tag>`` (ví dụ ``ollama/qwen3:8b``),
+      gọi Ollama Chat Completions trên localhost qua HTTP API.
     - Các model còn lại: dùng Gemini như trước đây.
     """
+    if is_ollama_model(model_name):
+        messages: list[dict] = []
+        if system_instruction:
+            messages.append({"role": "system", "content": system_instruction})
+        messages.append({"role": "user", "content": prompt})
+
+        # Truyền tên model thực tế trong Ollama (phần sau "ollama/").
+        ollama_model = model_name.split("/", 1)[1] if "/" in model_name else model_name
+        response = _ollama_chat_completions(ollama_model, messages)
+        try:
+            return response["choices"][0]["message"]["content"]
+        except Exception:
+            return json.dumps(response, ensure_ascii=False)
+
     if is_openrouter_model(model_name):
         messages: list[dict] = []
         if system_instruction:

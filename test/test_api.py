@@ -172,3 +172,26 @@ def test_generate_text_routes_to_groq(monkeypatch):
 
     assert captured["messages"][0] == {"role": "system", "content": "sys-instr"}
     assert captured["messages"][1] == {"role": "user", "content": "hello"}
+
+def test_generate_text_routes_to_ollama(monkeypatch):
+    """generate_text phải route đúng sang _ollama_chat_completions khi dùng ollama/* model."""
+
+    captured = {}
+
+    def fake_ollama_call(model_name, messages):  # type: ignore[override]
+        captured["model_name"] = model_name
+        captured["messages"] = messages
+        return {"choices": [{"message": {"content": "hi from ollama"}}]}
+
+    monkeypatch.setattr(api, "_ollama_chat_completions", fake_ollama_call, raising=True)
+
+    text = api.generate_text(
+        "ollama/qwen3:8b", "hello", system_instruction="sys-instr"
+    )
+
+    assert text == "hi from ollama"
+    # Model name truyền sang Ollama phải loại bỏ prefix provider
+    assert captured["model_name"] == "qwen3:8b"
+
+    assert captured["messages"][0] == {"role": "system", "content": "sys-instr"}
+    assert captured["messages"][1] == {"role": "user", "content": "hello"}
