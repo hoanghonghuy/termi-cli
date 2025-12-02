@@ -10,6 +10,7 @@ from datetime import datetime
 from rich.console import Console
 
 from termi_cli import utils, api, i18n
+from termi_cli.handlers import mini_agent
 
 from .core_handler import handle_conversation_turn, get_response_text_from_history, confirm_and_write_file
 from .history_handler import serialize_history, HISTORY_DIR
@@ -157,10 +158,9 @@ def run_chat_mode_deepseek(console: Console, config: dict, args: argparse.Namesp
 
     tool_names = ", ".join(sorted(api.AVAILABLE_TOOLS.keys()))
     tool_usage_hint = (
-        "You can optionally use tools to perform actions (shell, files, database, etc.). "
-        "When you want to call a tool, respond with a single JSON object on its own line, "
-        "with the following schema: {\"tool_name\": \"<name>\", \"tool_args\": { ... }}. "
-        f"Valid tool_name values include: {tool_names}. After the tool result is shown, you will be asked again to continue the conversation."
+        "If you need to run a tool (shell/files/web/etc.), return exactly one JSON object like "
+        '{"tool_name": "<name>", "tool_args": { ... }} without Markdown fences. '
+        f"Valid tool_name values: {tool_names}. If no tool is needed, answer normally."
     )
 
     try:
@@ -176,6 +176,18 @@ def run_chat_mode_deepseek(console: Console, config: dict, args: argparse.Namesp
             console.print(f"\n{ai_label}")
 
             dialogue.append(("user", prompt))
+
+            mini_agent_response = mini_agent.run_http_mini_agent(
+                prompt_text=prompt,
+                user_intent=prompt,
+                config=config,
+            )
+            if mini_agent_response:
+                console.print(mini_agent_response)
+                dialogue.append(("assistant", mini_agent_response))
+                utils.execute_suggested_commands(mini_agent_response, console)
+                continue
+
             max_tool_loops = 3
             tool_loop_count = 0
 

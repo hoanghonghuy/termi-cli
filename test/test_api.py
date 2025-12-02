@@ -1,4 +1,6 @@
 import os
+import sys
+import pytest
 from unittest.mock import MagicMock
 from rich.console import Console
 from termi_cli import api
@@ -19,6 +21,7 @@ def test_initialize_api_keys(mocker):
     assert keys == ["key1", "key2", "key3"]
     assert len(keys) == 3
 
+@pytest.mark.skipif(sys.version_info >= (3, 13), reason="Gemini SDK không khả dụng trên Python >=3.13 ở môi trường test")
 def test_get_available_models(mocker):
     """
     Kiểm tra hàm lấy model mà không cần gọi API thật.
@@ -170,6 +173,27 @@ def test_generate_text_routes_to_groq(monkeypatch):
     # Model name phải được normalize sang model Groq thật tương ứng
     assert captured["model_name"] == "llama-3.3-70b-versatile"
 
+    assert captured["messages"][0] == {"role": "system", "content": "sys-instr"}
+    assert captured["messages"][1] == {"role": "user", "content": "hello"}
+
+def test_generate_text_routes_to_ollama_cloud(monkeypatch):
+    """generate_text phải route đúng sang _ollama_cloud_chat_completions khi dùng ollama-cloud/* model."""
+
+    captured = {}
+
+    def fake_cloud_call(model_name, messages):  # type: ignore[override]
+        captured["model_name"] = model_name
+        captured["messages"] = messages
+        return {"message": {"content": "hi from ollama cloud"}}
+
+    monkeypatch.setattr(api, "_ollama_cloud_chat_completions", fake_cloud_call, raising=True)
+
+    text = api.generate_text(
+        "ollama-cloud/qwen3-coder:480b-cloud", "hello", system_instruction="sys-instr"
+    )
+
+    assert text == "hi from ollama cloud"
+    assert captured["model_name"] == "qwen3-coder:480b-cloud"
     assert captured["messages"][0] == {"role": "system", "content": "sys-instr"}
     assert captured["messages"][1] == {"role": "user", "content": "hello"}
 

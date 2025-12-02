@@ -681,6 +681,7 @@ def test_run_master_agent_http_agent_insufficient_balance_prints_unexpected_erro
             ],
         },
     )
+    mocker.patch.object(agent_handler.api, "GEMINI_AVAILABLE", True)
 
     # HTTP agent gọi api.generate_text và gặp lỗi thiếu balance
     gen_text_mock = mocker.patch(
@@ -784,6 +785,7 @@ def test_run_master_agent_http_agent_groq_insufficient_balance_prints_unexpected
             ],
         },
     )
+    mocker.patch.object(agent_handler.api, "GEMINI_AVAILABLE", True)
 
     gen_text_mock = mocker.patch(
         "termi_cli.handlers.agent_handler.api.generate_text",
@@ -841,6 +843,7 @@ def test_run_master_agent_http_agent_openrouter_insufficient_balance_prints_unex
             ],
         },
     )
+    mocker.patch.object(agent_handler.api, "GEMINI_AVAILABLE", True)
 
     gen_text_mock = mocker.patch(
         "termi_cli.handlers.agent_handler.api.generate_text",

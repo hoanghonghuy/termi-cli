@@ -6,8 +6,12 @@ from pathlib import Path
 from io import StringIO
 from types import SimpleNamespace
 
-import chromadb
-from chromadb.config import Settings
+import pytest
+try:
+    import chromadb
+    from chromadb.config import Settings
+except Exception as e:  # pragma: no cover
+    pytest.skip(f"chromadb is not available or misconfigured: {e}", allow_module_level=True)
 from rich.console import Console
 
 from termi_cli import cli as cli_module
@@ -360,6 +364,23 @@ def test_cli_diagnostics_with_openrouter_model_prints_openrouter_hint(tmp_path):
         "Ví dụ OpenRouter" in result.stdout
         or "OpenRouter example" in result.stdout
     )
+
+
+def test_cli_diagnostics_with_ollama_model_shows_ollama_provider(tmp_path):
+    """--diagnostics với default_model Ollama phải hiển thị provider Ollama trong bảng."""
+
+    home = tmp_path / "home"
+    home.mkdir()
+
+    config_path = home / "config.json"
+    custom_config = {"default_model": "ollama/qwen3:8b"}
+    config_path.write_text(json.dumps(custom_config, ensure_ascii=False), encoding="utf-8")
+
+    result = _run_cli(tmp_path, ["--diagnostics"], {"TERMI_CLI_HOME": home})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    # Bảng diagnostics phải chứa chữ "Ollama" trong cột Provider
+    assert "Ollama" in result.stdout
 
 
 def test_requires_gemini_for_agent_with_ollama_does_not_need_gemini():

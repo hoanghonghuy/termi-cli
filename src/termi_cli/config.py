@@ -89,6 +89,91 @@ def load_config() -> dict:
             "mistralai/mistral-7b-instruct": "(free tier)",
             "qwen/qwen2.5-7b-instruct": "(free tier)",
         },
+        # Cấu hình mặc định cho mini-agent single-turn khi dùng HTTP providers (DeepSeek/Groq/OpenRouter/Ollama).
+        # Người dùng có thể sửa/trộn thêm rule trong config.json.
+        "mini_agent": {
+            "enabled": True,
+            "rules": [
+                {
+                    "tool_name": "get_current_time",
+                    "patterns": [
+                        "bây giờ là mấy giờ",
+                        "bay gio la may gio",
+                        "mấy giờ rồi",
+                        "may gio roi",
+                        "giờ hệ thống",
+                        "gio he thong",
+                        "giờ việt nam",
+                        "gio viet nam",
+                        "hôm nay là ngày mấy",
+                        "hom nay la ngay may",
+                        "what time is it",
+                        "current time",
+                        "what is the time",
+                        "today's date",
+                        "what is today",
+                    ],
+                    "pass_prompt": False,
+                },
+                {
+                    "tool_name": "get_cli_uptime",
+                    "patterns": [
+                        "uptime",
+                        "thời gian chạy",
+                        "thoi gian chay",
+                        "thời gian hoạt động",
+                        "thoi gian hoat dong",
+                        "system uptime",
+                    ],
+                    "pass_prompt": False,
+                },
+                {
+                    "tool_name": "search_web",
+                    "patterns": [
+                        "thời tiết",
+                        "thoi tiet",
+                        "nhiệt độ",
+                        "nhiet do",
+                        "trời mưa",
+                        "troi mua",
+                        "weather",
+                        "forecast",
+                        "temperature",
+                        "weather in",
+                        "forecast for",
+                        "weather in hcmc tomorrow",
+                    ],
+                    "pass_prompt": True,
+                },
+                {
+                    "tool_name": "search_web",
+                    "patterns": [
+                        # Tỷ giá VN/EN
+                        "tỷ giá",
+                        "ty gia",
+                        "tỉ giá",
+                        "ti gia",
+                        "tỷ giá usd",
+                        "ty gia usd",
+                        "exchange rate",
+                        "usd vnd",
+                        "eur vnd",
+                        "usd to vnd",
+                        "eur to vnd",
+                        # Giá crypto
+                        "giá btc",
+                        "gia btc",
+                        "giá bitcoin",
+                        "gia bitcoin",
+                        "btc price",
+                        "bitcoin price",
+                        "eth price",
+                        "crypto price",
+                    ],
+                    "pass_prompt": True,
+                },
+            ],
+        },
     }
     
     final_config = {**defaults, **config_data}

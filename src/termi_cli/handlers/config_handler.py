@@ -8,6 +8,7 @@ from rich.table import Table
 
 from termi_cli import api, i18n
 from termi_cli.config import save_config
+from termi_cli.handlers import mini_agent
 
 
 def model_selection_wizard(console: Console, config: dict):
@@ -20,10 +21,19 @@ def model_selection_wizard(console: Console, config: dict):
     model_labels = config.get("model_labels") or {}
 
     providers = [
+        ("gemini", "", i18n.tr(language, "config_provider_desc_gemini")),
+        ("deepseek", "", i18n.tr(language, "config_provider_desc_deepseek")),
+        ("groq", "", i18n.tr(language, "config_provider_desc_groq")),
+        ("openrouter", "", i18n.tr(language, "config_provider_desc_openrouter")),
+        ("ollama", "", i18n.tr(language, "config_provider_desc_ollama")),
+    ]
+
+    providers = [
         ("gemini", "🟢 Gemini", i18n.tr(language, "config_provider_desc_gemini")),
         ("deepseek", "🟣 DeepSeek", i18n.tr(language, "config_provider_desc_deepseek")),
         ("groq", "🟠 Groq", i18n.tr(language, "config_provider_desc_groq")),
         ("openrouter", "🔵 OpenRouter", i18n.tr(language, "config_provider_desc_openrouter")),
+        ("ollama", "⚫ Ollama", i18n.tr(language, "config_provider_desc_ollama")),
     ]
 
     table = Table(title=i18n.tr(language, "config_provider_selection_title"))
@@ -61,6 +71,8 @@ def model_selection_wizard(console: Console, config: dict):
             console.print(i18n.tr(language, "config_model_provider_hint_groq"))
         elif api.is_openrouter_model(model_name):
             console.print(i18n.tr(language, "config_model_provider_hint_openrouter"))
+        elif api.is_ollama_model(model_name):
+            console.print(i18n.tr(language, "config_model_provider_hint_ollama"))
         else:
             console.print(i18n.tr(language, "config_model_provider_hint_gemini"))
 
@@ -129,42 +141,52 @@ def model_selection_wizard(console: Console, config: dict):
         _print_provider_hint(default_model)
         console.print(i18n.tr(language, "config_fallback_order_updated"))
 
-        code_index = _select_index(
-            sorted_models,
-            "config_select_code_model_prompt",
-            allow_blank=True,
-            default_index=default_index,
-        )
-        if code_index is None:
-            save_config(config)
+        # Đơn giản hoá: dùng cùng một model cho default/code/commit
+        config["code_model"] = default_model
+        config["commit_model"] = default_model
+        console.print(i18n.tr(language, "config_code_model_same_as_default"))
+        console.print(i18n.tr(language, "config_commit_model_same_as_code_or_default"))
+
+        save_config(config)
+        return
+
+    # --- Nhánh Ollama: nhập tag model thủ công, prefix "ollama/" ---
+    if provider_key == "ollama":
+
+        def _ask_ollama_model(prompt_key: str, prefix: str) -> str | None:
+            while True:
+                try:
+                    choice_str = console.input(i18n.tr(language, prompt_key), markup=False).strip()
+                    if not choice_str:
+                        console.print(i18n.tr(language, "config_selection_cancelled"))
+                        return None
+                    if not choice_str.startswith(prefix):
+                        choice_str = f"{prefix}{choice_str}"
+                    return choice_str
+                except (KeyboardInterrupt, EOFError):
+                    console.print(i18n.tr(language, "config_selection_cancelled"))
+                    return None
+
+        variant_raw = console.input(i18n.tr(language, "config_ollama_variant_prompt"), markup=False).strip()
+        variant = 2 if variant_raw == "2" else 1
+
+        if variant == 2:
+            console.print(i18n.tr(language, "config_ollama_cloud_api_hint"))
+            default_model = _ask_ollama_model("config_ollama_cloud_model_prompt", "ollama-cloud/")
+        else:
+            default_model = _ask_ollama_model("config_ollama_default_model_prompt", "ollama/")
+
+        if default_model is None:
             return
 
-        code_model = sorted_models[code_index]
-        config["code_model"] = code_model
-        if code_index == default_index:
-            console.print(i18n.tr(language, "config_code_model_same_as_default"))
-        else:
-            console.print(i18n.tr(language, "config_code_model_set", model=code_model))
-        _print_provider_hint(code_model)
-
-        baseline_index = code_index
-        commit_index = _select_index(
-            sorted_models,
-            "config_select_commit_model_prompt",
-            allow_blank=True,
-            default_index=baseline_index,
-        )
-        if commit_index is None:
-            save_config(config)
-            return
-
-        commit_model = sorted_models[commit_index]
-        config["commit_model"] = commit_model
-        if commit_index == baseline_index:
-            console.print(i18n.tr(language, "config_commit_model_same_as_code_or_default"))
-        else:
-            console.print(i18n.tr(language, "config_commit_model_set", model=commit_model))
-        _print_provider_hint(commit_model)
+        config["default_model"] = default_model
+        config["code_model"] = default_model
+        config["commit_model"] = default_model
+        config["model_fallback_order"] = [default_model]
+        console.print(i18n.tr(language, "config_default_model_set", model=default_model))
+        _print_provider_hint(default_model)
+        console.print(i18n.tr(language, "config_code_model_same_as_default"))
+        console.print(i18n.tr(language, "config_commit_model_same_as_code_or_default"))
 
         save_config(config)
         return
@@ -240,51 +262,20 @@ def model_selection_wizard(console: Console, config: dict):
                 except (KeyboardInterrupt, EOFError):
                     return None
 
-        # Bước 1: default_model (bắt buộc)
+        # Một lần chọn model cho tất cả vai trò
         default_model = _ask_openrouter_model("config_openrouter_default_model_prompt", allow_blank=False)
         if default_model is None:
             console.print(i18n.tr(language, "config_selection_cancelled"))
             return
 
         config["default_model"] = default_model
+        config["code_model"] = default_model
+        config["commit_model"] = default_model
         config["model_fallback_order"] = [default_model]
         console.print(i18n.tr(language, "config_default_model_set", model=default_model))
         _print_provider_hint(default_model)
-
-        # Bước 2: code_model (Enter => dùng cùng default_model)
-        code_model = _ask_openrouter_model(
-            "config_openrouter_code_model_prompt",
-            allow_blank=True,
-            baseline=default_model,
-        )
-        if code_model is None:
-            save_config(config)
-            console.print(i18n.tr(language, "config_selection_cancelled"))
-            return
-
-        config["code_model"] = code_model
-        if code_model == default_model:
-            console.print(i18n.tr(language, "config_code_model_same_as_default"))
-        else:
-            console.print(i18n.tr(language, "config_code_model_set", model=code_model))
-
-        # Bước 3: commit_model (Enter => dùng cùng code_model/default_model)
-        baseline = config.get("code_model", default_model)
-        commit_model = _ask_openrouter_model(
-            "config_openrouter_commit_model_prompt",
-            allow_blank=True,
-            baseline=baseline,
-        )
-        if commit_model is None:
-            save_config(config)
-            console.print(i18n.tr(language, "config_selection_cancelled"))
-            return
-
-        config["commit_model"] = commit_model
-        if commit_model == baseline:
-            console.print(i18n.tr(language, "config_commit_model_same_as_code_or_default"))
-        else:
-            console.print(i18n.tr(language, "config_commit_model_set", model=commit_model))
+        console.print(i18n.tr(language, "config_code_model_same_as_default"))
+        console.print(i18n.tr(language, "config_commit_model_same_as_code_or_default"))
 
         save_config(config)
         return
@@ -330,42 +321,11 @@ def model_selection_wizard(console: Console, config: dict):
     console.print(i18n.tr(language, "config_default_model_set", model=default_model))
     _print_provider_hint(default_model)
 
-    code_index = _select_index(
-        sorted_models,
-        "config_select_code_model_prompt",
-        allow_blank=True,
-        default_index=default_index,
-    )
-    if code_index is None:
-        save_config(config)
-        return
-
-    code_model = sorted_models[code_index]
-    config["code_model"] = code_model
-    if code_index == default_index:
-        console.print(i18n.tr(language, "config_code_model_same_as_default"))
-    else:
-        console.print(i18n.tr(language, "config_code_model_set", model=code_model))
-    _print_provider_hint(code_model)
-
-    baseline_index = code_index
-    commit_index = _select_index(
-        sorted_models,
-        "config_select_commit_model_prompt",
-        allow_blank=True,
-        default_index=baseline_index,
-    )
-    if commit_index is None:
-        save_config(config)
-        return
-
-    commit_model = sorted_models[commit_index]
-    config["commit_model"] = commit_model
-    if commit_index == baseline_index:
-        console.print(i18n.tr(language, "config_commit_model_same_as_code_or_default"))
-    else:
-        console.print(i18n.tr(language, "config_commit_model_set", model=commit_model))
-    _print_provider_hint(commit_model)
+    # Đơn giản hoá: dùng cùng một model cho default/code/commit
+    config["code_model"] = default_model
+    config["commit_model"] = default_model
+    console.print(i18n.tr(language, "config_code_model_same_as_default"))
+    console.print(i18n.tr(language, "config_commit_model_same_as_code_or_default"))
 
     save_config(config)
 
@@ -573,6 +533,10 @@ def show_diagnostics(console: Console, config: dict):
             return "DeepSeek"
         if model_name.startswith("groq-"):
             return "Groq"
+        if api.is_ollama_model(model_name):
+            return "Ollama"
+        if api.is_ollama_cloud_model(model_name):
+            return "Ollama Cloud"
         if api.is_openrouter_model(model_name):
             return "OpenRouter"
         return "Gemini"
@@ -584,6 +548,8 @@ def show_diagnostics(console: Console, config: dict):
             "DeepSeek": "🟣 DeepSeek",
             "Groq": "🟠 Groq",
             "OpenRouter": "🔵 OpenRouter",
+            "Ollama": "⚫ Ollama",
+            "Ollama Cloud": "⚫☁️ Ollama Cloud",
         }
 
         return icons.get(name, name)
@@ -683,3 +649,31 @@ def show_diagnostics(console: Console, config: dict):
         else:
             continue
         console.print(i18n.tr(language, hint_key))
+
+    # Thông tin mini-agent HTTP (single-turn) để dễ debug cấu hình
+    mini_cfg = config.get("mini_agent") or {}
+    rules = mini_cfg.get("rules") or []
+    tools = sorted({
+        rule.get("tool_name")
+        for rule in rules
+        if isinstance(rule, dict) and rule.get("tool_name")
+    })
+    enabled = bool(mini_cfg.get("enabled", True))
+
+    if language == "vi":
+        status = "bật" if enabled else "tắt"
+        console.print(
+            f"[dim]Mini-agent HTTP (single-turn): {status}, {len(rules)} rule, tools: {', '.join(tools) or '-'}[/dim]"
+        )
+    else:
+        status = "enabled" if enabled else "disabled"
+        console.print(
+            f"[dim]HTTP mini-agent (single-turn): {status}, {len(rules)} rules, tools: {', '.join(tools) or '-'}[/dim]"
+        )
+
+    issues = mini_agent.validate_mini_agent_rules(config)
+    if issues:
+        warning_prefix = i18n.tr(language, "diagnostics_mini_agent_warnings")
+        console.print(warning_prefix)
+        for msg in issues:
+            console.print(f"[yellow]- {msg}[/yellow]")

@@ -50,7 +50,30 @@ Use this as the **single source of truth** to answer any questions about the app
 
 def build_agent_instruction() -> str:
     from termi_cli import api
+    from termi_cli.config import load_config
+
     tool_list = "\n".join([f"- `{name}`" for name in api.AVAILABLE_TOOLS.keys()])
+
+    use_qwen_style = False
+    try:
+        config = load_config()
+        agent_model = config.get("agent_model") or config.get("default_model")
+        if isinstance(agent_model, str) and api.is_ollama_model(agent_model) and "qwen" in agent_model.lower():
+            use_qwen_style = True
+    except Exception:
+        # Nếu không load được config thì bỏ qua style đặc biệt cho Qwen.
+        use_qwen_style = False
+
+    qwen_style_block = ""
+    if use_qwen_style:
+        qwen_style_block = """
+
+**--- STYLE OVERRIDE FOR LOCAL QWEN (OLLAMA) ---**
+- Write `thought` and the final `answer` (via the `finish` tool) in **Vietnamese** unless the user clearly writes in another language.
+- Keep `thought` short (1–3 sentences), focusing on reasoning and the **next tool/action**, not on chit-chat.
+- Prefer concrete **code blocks** and shell commands over long narrative explanations.
+- Do **not** include greetings or small talk; go straight to the point.
+"""
 
     instruction_template = f"""
 You are a ReAct AI Agent. Your **only** function is to communicate through a specific JSON format.
@@ -65,6 +88,8 @@ You are a ReAct AI Agent. Your **only** function is to communicate through a spe
 3.  **VALID TOOLS ONLY:** The `tool_name` in your action **MUST** be one of the tools listed in the "AVAILABLE TOOLS" section.
 4.  **HANDLE ERRORS & STAY FOCUSED:** If a tool call results in an error, your next `thought` **MUST** be to analyze the error message and figure out why it failed. Then, you **MUST** try to achieve the **ORIGINAL USER'S GOAL** using a different tool or different arguments. **NEVER invent a new goal.**
 5.  **USE 'finish' TO ANSWER:** When you have enough information OR if the request is simple enough to answer directly, you **MUST** call the `finish` tool.
+
+{qwen_style_block}
 
 **--- EXAMPLES ---**
 
@@ -164,9 +189,31 @@ def build_executor_instruction() -> str:
     Xây dựng system instruction cho pha Thực Thi (Executor) của Agent.
     """
     from termi_cli import api
+    from termi_cli.config import load_config
+
     tool_definitions = ""
     for func in api.AVAILABLE_TOOLS.values():
         tool_definitions += f"- `{func.__name__}`: {func.__doc__.strip().splitlines()[0]}\n"
+
+    use_qwen_style = False
+    try:
+        config = load_config()
+        agent_model = config.get("agent_model") or config.get("default_model")
+        if isinstance(agent_model, str) and api.is_ollama_model(agent_model) and "qwen" in agent_model.lower():
+            use_qwen_style = True
+    except Exception:
+        use_qwen_style = False
+
+    qwen_style_block = ""
+    if use_qwen_style:
+        qwen_style_block = """
+
+**STYLE OVERRIDE FOR LOCAL QWEN (OLLAMA):**
+- Write `thought` in **Vietnamese** unless the user clearly writes in another language.
+- Keep `thought` short (1–3 sentences) and focused on the specific next action.
+- In the final `answer` of the `finish` tool, prefer bullet points and concrete code / shell commands over long prose.
+- Do not add greetings or small talk; focus on actionable instructions.
+"""
 
     instruction = f"""
 You are an expert AI developer, the "Executor". Your goal is to execute a development plan step-by-step using the available tools.
@@ -180,6 +227,7 @@ You are an expert AI developer, the "Executor". Your goal is to execute a develo
 
 **AVAILABLE TOOLS:**
 {tool_definitions}
+{qwen_style_block}
 
 **RESPONSE FORMAT & EXAMPLE:**
 ```json
