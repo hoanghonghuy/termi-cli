@@ -511,6 +511,28 @@ def test_get_safe_agent_model_allows_http_when_flag_true(mocker):
     assert console.print.call_count == 0
 
 
+def test_get_safe_agent_model_allows_ollama_without_http_flag(mocker):
+    """_get_safe_agent_model: với agent_model Ollama phải giữ nguyên model, không cần agent_allow_http và không in cảnh báo."""
+
+    console = mocker.MagicMock(spec=Console)
+
+    config = {
+        "language": "vi",
+        "agent_model": "ollama/qwen3:8b",
+        "agent_allow_http": False,
+        "default_model": "models/gemini-flash-latest",
+        "model_fallback_order": [
+            "models/gemini-flash-latest",
+            "models/gemini-pro-latest",
+        ],
+    }
+
+    model = agent_handler._get_safe_agent_model(console, config)
+
+    assert model == "ollama/qwen3:8b"
+    assert console.print.call_count == 0
+
+
 def test_run_master_agent_uses_http_agent_when_allowed(mocker):
     """run_master_agent: với agent_allow_http=True và agent_model HTTP phải đi qua nhánh HTTP (generate_text)."""
 
@@ -575,6 +597,67 @@ def test_run_master_agent_uses_http_agent_when_allowed(mocker):
     # Nhánh Gemini không được đụng tới
     genai_mock.assert_not_called()
     # Và Agent phải route sang simple_task executor với step tương ứng
+    exec_simple_mock.assert_called_once()
+
+
+def test_run_master_agent_uses_ollama_http_even_when_http_flag_false(mocker):
+    """run_master_agent: với agent_model Ollama phải đi qua nhánh HTTP (generate_text) ngay cả khi agent_allow_http=False."""
+
+    console = mocker.MagicMock(spec=Console)
+    args = _make_args(prompt="Goal via Ollama agent")
+
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.load_config",
+        return_value={
+            "language": "vi",
+            "agent_model": "ollama/qwen3:8b",
+            "agent_allow_http": False,
+        },
+    )
+
+    mocker.patch(
+        "termi_cli.handlers.agent_handler._get_safe_agent_model",
+        return_value="ollama/qwen3:8b",
+    )
+
+    captured: dict = {}
+
+    def fake_generate_text(model_name, prompt, system_instruction=None):  # noqa: ARG001
+        captured["model_name"] = model_name
+        captured["prompt"] = prompt
+        captured["system_instruction"] = system_instruction
+
+        payload = json.dumps(
+            {
+                "task_type": "simple_task",
+                "step": {
+                    "thought": "t",
+                    "action": {"tool_name": "finish", "tool_args": {"answer": "ok"}},
+                },
+            }
+        )
+        return f"```json\n{payload}\n```"
+
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.api.generate_text",
+        side_effect=fake_generate_text,
+    )
+
+    genai_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.api.genai.GenerativeModel",
+        side_effect=AssertionError("Gemini path should not be used for Ollama agent"),
+    )
+
+    exec_simple_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.execute_simple_task",
+        return_value=None,
+    )
+
+    agent_handler.run_master_agent(console, args)
+
+    assert captured.get("model_name") == "ollama/qwen3:8b"
+    assert "task_type" in captured.get("prompt", "")
+    genai_mock.assert_not_called()
     exec_simple_mock.assert_called_once()
 
 

@@ -118,6 +118,11 @@ def _get_safe_agent_model(console: Console, config: dict) -> str:
     language = config.get("language", "vi")
     agent_model = config.get("agent_model", "models/gemini-pro-latest")
 
+    # Đặc biệt: model local qua Ollama (ollama/*) luôn được phép dùng trực tiếp cho Agent,
+    # không phụ thuộc agent_allow_http và không fallback sang Gemini.
+    if isinstance(agent_model, str) and api.is_ollama_model(agent_model):
+        return agent_model
+
     provider = "gemini"
     if isinstance(agent_model, str):
         if agent_model.startswith("deepseek-"):
@@ -212,13 +217,21 @@ def run_master_agent(console: Console, args: argparse.Namespace):
             agent_model_name = _get_safe_agent_model(console, config)
             master_prompt = build_master_agent_prompt(args.prompt)
 
+            allow_http_for_agent = config.get("agent_allow_http", False)
             use_http_agent = (
-                config.get("agent_allow_http", False)
-                and isinstance(agent_model_name, str)
+                isinstance(agent_model_name, str)
                 and (
-                    agent_model_name.startswith("deepseek-")
-                    or agent_model_name.startswith("groq-")
-                    or api.is_openrouter_model(agent_model_name)
+                    # HTTP provider trả phí chỉ được dùng khi bật agent_allow_http
+                    (
+                        allow_http_for_agent
+                        and (
+                            agent_model_name.startswith("deepseek-")
+                            or agent_model_name.startswith("groq-")
+                            or api.is_openrouter_model(agent_model_name)
+                        )
+                    )
+                    # Model local Ollama luôn được coi là HTTP agent hợp lệ
+                    or api.is_ollama_model(agent_model_name)
                 )
             )
 
@@ -375,12 +388,17 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
 
     allow_http_for_agent = config.get("agent_allow_http", False)
     use_http_agent = (
-        allow_http_for_agent
-        and isinstance(agent_model_name, str)
+        isinstance(agent_model_name, str)
         and (
-            agent_model_name.startswith("deepseek-")
-            or agent_model_name.startswith("groq-")
-            or api.is_openrouter_model(agent_model_name)
+            (
+                allow_http_for_agent
+                and (
+                    agent_model_name.startswith("deepseek-")
+                    or agent_model_name.startswith("groq-")
+                    or api.is_openrouter_model(agent_model_name)
+                )
+            )
+            or api.is_ollama_model(agent_model_name)
         )
     )
 
@@ -508,12 +526,17 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
 
     allow_http_for_agent = config.get("agent_allow_http", False)
     use_http_agent = (
-        allow_http_for_agent
-        and isinstance(agent_model_name, str)
+        isinstance(agent_model_name, str)
         and (
-            agent_model_name.startswith("deepseek-")
-            or agent_model_name.startswith("groq-")
-            or api.is_openrouter_model(agent_model_name)
+            (
+                allow_http_for_agent
+                and (
+                    agent_model_name.startswith("deepseek-")
+                    or agent_model_name.startswith("groq-")
+                    or api.is_openrouter_model(agent_model_name)
+                )
+            )
+            or api.is_ollama_model(agent_model_name)
         )
     )
 

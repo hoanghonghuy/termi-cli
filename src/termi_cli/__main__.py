@@ -140,10 +140,15 @@ def _requires_gemini_for_command(config: dict, args) -> bool:
 
     # Agent: nếu không bật agent_allow_http hoặc agent_model không phải HTTP provider
     # thì vẫn yêu cầu Gemini như cũ. Nếu agent_allow_http=True và agent_model là HTTP
-    # (DeepSeek/Groq/OpenRouter) thì không cần Gemini.
+    # (DeepSeek/Groq/OpenRouter) thì không cần Gemini. Riêng model local Ollama luôn
+    # được phép chạy Agent mà không cần Gemini.
     if getattr(args, "agent", False):
         agent_model = config.get("agent_model") or config.get("default_model")
         allow_http_for_agent = config.get("agent_allow_http", False)
+
+        if isinstance(agent_model, str) and api.is_ollama_model(agent_model):
+            return False
+
         if allow_http_for_agent and _is_http_model_name(agent_model):
             return False
         return True

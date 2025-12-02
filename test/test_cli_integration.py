@@ -4,6 +4,7 @@ import json
 import subprocess
 from pathlib import Path
 from io import StringIO
+from types import SimpleNamespace
 
 import chromadb
 from chromadb.config import Settings
@@ -359,6 +360,20 @@ def test_cli_diagnostics_with_openrouter_model_prints_openrouter_hint(tmp_path):
         "Ví dụ OpenRouter" in result.stdout
         or "OpenRouter example" in result.stdout
     )
+
+
+def test_requires_gemini_for_agent_with_ollama_does_not_need_gemini():
+    """_requires_gemini_for_command: Agent với agent_model Ollama phải không yêu cầu Gemini."""
+
+    config = {
+        "agent_model": "ollama/qwen3:8b",
+        "agent_allow_http": False,
+        "default_model": "models/gemini-flash-latest",
+    }
+
+    args = SimpleNamespace(agent=True)
+
+    assert cli_entry._requires_gemini_for_command(config, args) is False
 
 
 def test_cli_git_commit_short_in_repo_auto_staging(tmp_path, monkeypatch, mocker):
