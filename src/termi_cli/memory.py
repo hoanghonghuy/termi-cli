@@ -1,5 +1,3 @@
-import chromadb
-from chromadb.config import Settings
 import time
 import os
 import shutil
@@ -10,6 +8,20 @@ from termi_cli.config import APP_DIR
 DB_PATH = str(APP_DIR / "memory_db")
 
 logger = logging.getLogger(__name__)
+
+try:
+    import chromadb
+    from chromadb.config import Settings
+    CHROMA_AVAILABLE = True
+except Exception as e:  # Bao luôn lỗi PydanticImportError trên Python 3.14
+    chromadb = None  # type: ignore[assignment]
+    Settings = None  # type: ignore[assignment]
+    CHROMA_AVAILABLE = False
+    logger.warning(
+        "ChromaDB (long-term memory) không khả dụng trong môi trường hiện tại: %s. "
+        "Các tính năng trí nhớ dài hạn sẽ bị vô hiệu hoá.",
+        e,
+    )
 
 # Khởi tạo lười để tránh mở file SQLite khi chỉ muốn xoá DB (reset-memory).
 client = None
@@ -24,8 +36,9 @@ def _ensure_collection():
     """
     global client, collection, MEMORY_DISABLED
 
-    if MEMORY_DISABLED:
+    if MEMORY_DISABLED or not CHROMA_AVAILABLE:
         return None
+
     if collection is not None:
         return collection
 

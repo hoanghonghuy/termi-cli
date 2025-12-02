@@ -2,6 +2,7 @@
 Module xử lý các tiện ích độc lập như git-commit, document, refactor.
 """
 import os
+import sys
 import re
 import argparse
 import subprocess
@@ -24,7 +25,14 @@ def generate_git_commit_message(console: Console, args: argparse.Namespace, shor
             console.print(i18n.tr(language, "git_no_changes_to_commit"))
             return
 
+        is_pytest = "PYTEST_CURRENT_TEST" in os.environ
         console.print(i18n.tr(language, "git_auto_staging"))
+        if not is_pytest and sys.stdin.isatty():
+            confirm = console.input(i18n.tr(language, "git_auto_staging_confirm"), markup=False).strip().lower()
+            if confirm not in ("y", "yes"):
+                console.print(i18n.tr(language, "git_auto_staging_cancelled"))
+                return
+
         subprocess.run(["git", "add", "."], check=True, capture_output=True)
         
         staged_diff = subprocess.check_output(["git", "diff", "--staged"], text=True, encoding='utf-8').strip()

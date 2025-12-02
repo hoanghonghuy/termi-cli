@@ -668,3 +668,18 @@ def show_diagnostics(console: Console, config: dict):
         agent_model.startswith("deepseek-") or agent_model.startswith("groq-")
     ):
         console.print(i18n.tr(language, "diagnostics_agent_fallback_note"))
+
+    # Gợi ý thêm về cách dùng cho từng provider đang hiện diện trong cấu hình
+    providers_in_use = { _provider_name(model_name) for _, model_name in rows if model_name is not None }
+    for provider in sorted(providers_in_use):
+        if provider == "Gemini":
+            hint_key = "diagnostics_hint_gemini"
+        elif provider == "DeepSeek":
+            hint_key = "diagnostics_hint_deepseek"
+        elif provider == "Groq":
+            hint_key = "diagnostics_hint_groq"
+        elif provider == "OpenRouter":
+            hint_key = "diagnostics_hint_openrouter"
+        else:
+            continue
+        console.print(i18n.tr(language, hint_key))

@@ -16,13 +16,13 @@ from rich.json import JSON
 from rich.text import Text
 from rich.tree import Tree
 from rich.table import Table
-from google.api_core.exceptions import ResourceExhausted
 
 from termi_cli import api, i18n
 from termi_cli.api import RPDQuotaExhausted # Import exception tùy chỉnh
 from termi_cli.prompts import build_agent_instruction, build_master_agent_prompt, build_executor_instruction
 from termi_cli.config import load_config
 from .core_handler import confirm_and_write_file
+
 
 def _format_plan_for_display(project_plan: dict) -> Panel:
     """
@@ -124,15 +124,25 @@ def _get_safe_agent_model(console: Console, config: dict) -> str:
             provider = "deepseek"
         elif agent_model.startswith("groq-"):
             provider = "groq"
+        elif api.is_openrouter_model(agent_model):
+            provider = "openrouter"
 
+    # Nếu đã là model Gemini hợp lệ thì dùng luôn.
     if provider == "gemini":
         return agent_model
 
-    # Tìm fallback Gemini an toàn
-    fallback = config.get("default_model") or "models/gemini-pro-latest"
-    if not isinstance(fallback, str) or not (
-        fallback.startswith("models/") or "gemini" in fallback.lower()
-    ):
+    allow_http_for_agent = config.get("agent_allow_http", False)
+    if allow_http_for_agent:
+        return agent_model
+
+    # Ngược lại, tìm một model Gemini fallback an toàn.
+    fallback = config.get("default_model")
+    if not (isinstance(fallback, str) and (fallback.startswith("models/") or "gemini" in fallback.lower())):
+        for candidate in config.get("model_fallback_order", []):
+            if isinstance(candidate, str) and (candidate.startswith("models/") or "gemini" in candidate.lower()):
+                fallback = candidate
+                break
+    if not (isinstance(fallback, str) and (fallback.startswith("models/") or "gemini" in fallback.lower())):
         fallback = "models/gemini-pro-latest"
 
     console.print(
@@ -144,6 +154,24 @@ def _get_safe_agent_model(console: Console, config: dict) -> str:
         )
     )
     return fallback
+
+
+def _get_gemini_fallback_model(config: dict) -> str:
+    """Chọn một model Gemini an toàn để fallback khi HTTP provider hết quota/balance cho Agent.
+
+    Ưu tiên `default_model` nếu đã là Gemini, sau đó duyệt `model_fallback_order`,
+    cuối cùng fallback cứng sang `models/gemini-flash-latest`.
+    """
+
+    model = config.get("default_model")
+    if isinstance(model, str) and (model.startswith("models/") or "gemini" in model.lower()):
+        return model
+
+    for candidate in config.get("model_fallback_order", []):
+        if isinstance(candidate, str) and (candidate.startswith("models/") or "gemini" in candidate.lower()):
+            return candidate
+
+    return "models/gemini-flash-latest"
 
 
 def run_master_agent(console: Console, args: argparse.Namespace):
@@ -182,13 +210,29 @@ def run_master_agent(console: Console, args: argparse.Namespace):
     while True:
         try:
             agent_model_name = _get_safe_agent_model(console, config)
-            model = api.genai.GenerativeModel(agent_model_name)
-            
             master_prompt = build_master_agent_prompt(args.prompt)
-            
-            response = api.resilient_generate_content(model, master_prompt)
 
-            raw_text = api.get_response_text(response)
+            use_http_agent = (
+                config.get("agent_allow_http", False)
+                and isinstance(agent_model_name, str)
+                and (
+                    agent_model_name.startswith("deepseek-")
+                    or agent_model_name.startswith("groq-")
+                    or api.is_openrouter_model(agent_model_name)
+                )
+            )
+
+            if use_http_agent:
+                raw_text = api.generate_text(
+                    agent_model_name,
+                    master_prompt,
+                    system_instruction=build_agent_instruction(),
+                )
+            else:
+                model = api.genai.GenerativeModel(agent_model_name)
+                response = api.resilient_generate_content(model, master_prompt)
+                raw_text = api.get_response_text(response)
+
             json_match = _extract_first_json_match(raw_text)
             if not json_match:
                 raise ValueError("Agent không trả về JSON hợp lệ ban đầu.")
@@ -201,6 +245,53 @@ def run_master_agent(console: Console, args: argparse.Namespace):
             # Chỉ cần lặp lại vòng lặp để thử lại với key mới.
             continue
         
+        except (
+            api.DeepseekInsufficientBalance,
+            api.GroqInsufficientBalance,
+            api.OpenRouterInsufficientBalance,
+        ) as e:
+            # HTTP provider báo hết balance/credit sau khi đã xoay key: thử fallback sang Gemini.
+            if isinstance(e, api.DeepseekInsufficientBalance):
+                provider = "DeepSeek"
+            elif isinstance(e, api.GroqInsufficientBalance):
+                provider = "Groq"
+            else:
+                provider = "OpenRouter"
+
+            console.print(
+                i18n.tr(
+                    language,
+                    "http_insufficient_balance_single_turn",
+                    provider=provider,
+                )
+            )
+
+            # Nếu Gemini SDK không khả dụng, không thể fallback, báo lỗi như pha phân tích lỗi bất ngờ.
+            if not getattr(api, "GEMINI_AVAILABLE", True):
+                console.print(
+                    i18n.tr(
+                        language,
+                        "agent_unexpected_analysis_error",
+                        error=e,
+                    )
+                )
+                return
+
+            fallback_model = _get_gemini_fallback_model(config)
+            console.print(
+                i18n.tr(
+                    language,
+                    "http_switch_to_gemini_single_turn",
+                    fallback_model=fallback_model,
+                )
+            )
+
+            # Cập nhật cấu hình để các lần gọi tiếp theo dùng Gemini thay vì HTTP.
+            config["agent_model"] = fallback_model
+            # Tắt cờ HTTP cho Agent để không quay lại HTTP trong session này.
+            config["agent_allow_http"] = False
+            continue
+
         except Exception as e:
             console.print(
                 i18n.tr(
@@ -282,8 +373,23 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
 
     agent_model_name = _get_safe_agent_model(console, config)
 
+    allow_http_for_agent = config.get("agent_allow_http", False)
+    use_http_agent = (
+        allow_http_for_agent
+        and isinstance(agent_model_name, str)
+        and (
+            agent_model_name.startswith("deepseek-")
+            or agent_model_name.startswith("groq-")
+            or api.is_openrouter_model(agent_model_name)
+        )
+    )
+
     executor_instruction = build_executor_instruction()
-    chat_session = api.start_chat_session(model_name=agent_model_name, system_instruction=executor_instruction)
+    if not use_http_agent:
+        chat_session = api.start_chat_session(model_name=agent_model_name, system_instruction=executor_instruction)
+    else:
+        chat_session = None
+    
     plan_str = json.dumps(project_plan, indent=2, ensure_ascii=False)
     scratchpad = f"I have been given a plan to execute.\n\n**PROJECT PLAN:**\n```json\n{plan_str}\n```\n\nMy task is to implement this plan step-by-step."
     max_steps = getattr(args, "agent_max_steps", None) or 30
@@ -303,9 +409,15 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
         
         while True:
             try:
-                response = api.resilient_send_message(chat_session, dynamic_prompt)
-
-                raw_text = api.get_response_text(response)
+                if use_http_agent:
+                    raw_text = api.generate_text(
+                        agent_model_name,
+                        dynamic_prompt,
+                        system_instruction=executor_instruction,
+                    )
+                else:
+                    response = api.resilient_send_message(chat_session, dynamic_prompt)
+                    raw_text = api.get_response_text(response)
                 json_match = _extract_first_json_match(raw_text)
                 if not json_match:
                     raise ValueError("No valid JSON found.")
@@ -363,6 +475,8 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
                 break
 
             except RPDQuotaExhausted:
+                if use_http_agent:
+                    raise
                 console.print(i18n.tr(language, "agent_recreate_session_quota"))
                 chat_session = api.start_chat_session(model_name=agent_model_name, system_instruction=executor_instruction)
             except Exception as e:
@@ -392,8 +506,22 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
     
     agent_model_name = _get_safe_agent_model(console, config)
 
+    allow_http_for_agent = config.get("agent_allow_http", False)
+    use_http_agent = (
+        allow_http_for_agent
+        and isinstance(agent_model_name, str)
+        and (
+            agent_model_name.startswith("deepseek-")
+            or agent_model_name.startswith("groq-")
+            or api.is_openrouter_model(agent_model_name)
+        )
+    )
+
     agent_instruction = build_agent_instruction()
-    chat_session = api.start_chat_session(model_name=agent_model_name, system_instruction=agent_instruction)
+    if not use_http_agent:
+        chat_session = api.start_chat_session(model_name=agent_model_name, system_instruction=agent_instruction)
+    else:
+        chat_session = None
     
     current_step_json = first_step
     max_steps = getattr(args, "agent_max_steps", None) or 10
@@ -417,8 +545,15 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
         else:
             while True:
                 try:
-                    response = api.resilient_send_message(chat_session, next_prompt)
-                    raw_text = api.get_response_text(response)
+                    if use_http_agent:
+                        raw_text = api.generate_text(
+                            agent_model_name,
+                            next_prompt,
+                            system_instruction=agent_instruction,
+                        )
+                    else:
+                        response = api.resilient_send_message(chat_session, next_prompt)
+                        raw_text = api.get_response_text(response)
                     json_match = _extract_first_json_match(raw_text)
                     if not json_match:
                         raise ValueError("No valid JSON found.")
@@ -428,6 +563,8 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
                     action = current_step_json.get("action", {})
                     break
                 except RPDQuotaExhausted:
+                    if use_http_agent:
+                        raise
                     console.print(i18n.tr(language, "agent_recreate_session_quota"))
                     chat_session = api.start_chat_session(model_name=agent_model_name, system_instruction=agent_instruction)
                 except Exception as e:

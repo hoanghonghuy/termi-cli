@@ -15,7 +15,16 @@ import logging
 from rich.console import Console
 from rich.markdown import Markdown
 from rich.panel import Panel
-from google.api_core.exceptions import ResourceExhausted, PermissionDenied, InvalidArgument
+try:
+    from google.api_core.exceptions import ResourceExhausted, PermissionDenied, InvalidArgument
+except Exception:
+    class ResourceExhausted(Exception):
+        """Fallback khi không import được google.api_core.exceptions (ví dụ Python 3.14)."""
+        pass
+    class PermissionDenied(Exception):
+        pass
+    class InvalidArgument(Exception):
+        pass
 
 from termi_cli import api, i18n
 from termi_cli.config import load_config

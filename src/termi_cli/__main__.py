@@ -6,10 +6,17 @@ import argparse
 import json
 import logging
 
+# Workaround tương thích Python 3.14: buộc protobuf dùng implementation Python thuần
+# thay vì extension C (_upb/_message), tránh lỗi "Metaclasses with custom tp_new".
+os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
+
 from rich.markup import escape
 from rich.console import Console
 from rich.markdown import Markdown
-from PIL import Image
+try:
+    from PIL import Image
+except Exception:
+    Image = None
 from dotenv import load_dotenv
 
 # Chuẩn hoá biến môi trường LANGUAGE càng sớm càng tốt để tránh lỗi
@@ -39,7 +46,10 @@ os.environ.setdefault('TF_CPP_MIN_LOG_LEVEL', '3')
 os.environ.setdefault('ABSL_CPP_MIN_LOG_LEVEL', '3')
 
 with silence_stderr():
-    import google.generativeai as genai
+    try:
+        import google.generativeai as genai  # noqa: F401
+    except Exception:
+        genai = None
 try:
     import logging
     logging.getLogger('google').setLevel(logging.ERROR)
@@ -94,6 +104,93 @@ def _setup_logging():
         pass
 
 
+def _get_gemini_fallback_model(config: dict) -> str:
+    """Chọn model Gemini an toàn để fallback khi HTTP provider hết quota/balance."""
+    model = config.get("default_model")
+    if isinstance(model, str) and (model.startswith("models/") or "gemini" in model.lower()):
+        return model
+    for candidate in config.get("model_fallback_order", []):
+        if isinstance(candidate, str) and (candidate.startswith("models/") or "gemini" in candidate.lower()):
+            return candidate
+    return "models/gemini-flash-latest"
+
+
+def _is_http_model_name(model_name: str) -> bool:
+    """Kiểm tra xem model thuộc nhóm HTTP provider (DeepSeek/Groq/OpenRouter) hay không."""
+    if not isinstance(model_name, str):
+        return False
+    if model_name.startswith("deepseek-"):
+        return True
+    if model_name.startswith("groq-"):
+        return True
+    if api.is_openrouter_model(model_name):
+        return True
+    return False
+
+
+def _requires_gemini_for_command(config: dict, args) -> bool:
+    """Quyết định xem lệnh hiện tại có thực sự cần GOOGLE_API_KEY/Gemini không.
+
+    - Agent và summarize history luôn dùng Gemini.
+    - list-models/set-model yêu cầu gọi trực tiếp Gemini API.
+    - Chat/single-turn/git-commit/document/refactor chỉ cần Gemini nếu model không phải HTTP provider.
+    """
+
+    # Agent: nếu không bật agent_allow_http hoặc agent_model không phải HTTP provider
+    # thì vẫn yêu cầu Gemini như cũ. Nếu agent_allow_http=True và agent_model là HTTP
+    # (DeepSeek/Groq/OpenRouter) thì không cần Gemini.
+    if getattr(args, "agent", False):
+        agent_model = config.get("agent_model") or config.get("default_model")
+        allow_http_for_agent = config.get("agent_allow_http", False)
+        if allow_http_for_agent and _is_http_model_name(agent_model):
+            return False
+        return True
+
+    # Tóm tắt history: chỉ yêu cầu Gemini nếu default_model KHÔNG phải HTTP provider.
+    if getattr(args, "summarize", False):
+        model_name = config.get("default_model")
+        return not _is_http_model_name(model_name)
+
+    # Làm việc trực tiếp với danh sách model Gemini
+    if getattr(args, "list_models", False) or getattr(args, "set_model", False):
+        # Nếu Gemini SDK khả dụng thì coi như cần Gemini; nếu không, cho phép chạy
+        # để api.list_models tự xử lý degrade (gợi ý HTTP models).
+        return getattr(api, "GEMINI_AVAILABLE", True)
+
+    # Chat tương tác: chỉ cần Gemini nếu model không phải HTTP provider
+    if getattr(args, "chat", False) or getattr(args, "topic", None):
+        model_name = getattr(args, "model", None) or config.get("default_model")
+        return not _is_http_model_name(model_name)
+
+    # git-commit (full/short): ưu tiên commit_model/code_model/default_model
+    if getattr(args, "git_commit", False) or getattr(args, "git_commit_short", False):
+        model_name = (
+            getattr(args, "model", None)
+            or config.get("commit_model")
+            or config.get("code_model")
+            or config.get("default_model")
+        )
+        return not _is_http_model_name(model_name)
+
+    # document/refactor: dựa vào code_model/default_model
+    if getattr(args, "document", None) or getattr(args, "refactor", None):
+        model_name = config.get("code_model") or config.get("default_model")
+        return not _is_http_model_name(model_name)
+
+    # Single-turn: có prompt/image/read-dir mà không bật chat/agent
+    has_single_turn_intent = bool(
+        getattr(args, "prompt", None)
+        or getattr(args, "image", None)
+        or getattr(args, "read_dir", False)
+    )
+    if has_single_turn_intent:
+        model_name = getattr(args, "model", None) or config.get("default_model")
+        return not _is_http_model_name(model_name)
+
+    # Các lệnh còn lại không yêu cầu Gemini.
+    return False
+
+
 def _run_single_turn(console: Console, config: dict, language: str, parser, args, cli_help_text: str, history):
     """Xử lý luồng prompt đơn (single-turn) tách riêng khỏi main cho dễ đọc/test."""
     # --- Xử lý prompt đơn (single-turn) ---
@@ -135,6 +232,9 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
         prompt_text = f"Dựa vào ngữ cảnh các file dưới đây:\n{context}\n\n{prompt_text}"
     
     if args.image:
+        if Image is None:
+            console.print(i18n.tr(language, "image_support_not_available"))
+            return
         for image_path in args.image:
             try:
                 img = Image.open(image_path)
@@ -189,7 +289,7 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
                     provider=provider,
                 )
             )
-            fallback_model = config.get("default_model")
+            fallback_model = _get_gemini_fallback_model(config)
             console.print(
                 i18n.tr(
                     language,
@@ -241,7 +341,7 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
 
     if user_intent and final_response_text:
         if memory.add_memory(user_intent, tool_calls_log, final_response_text):
-            console.print("[dim]💾 Đã lưu 1 lượt tương tác vào trí nhớ dài hạn.[/dim]")
+            console.print("[dim] Đã lưu 1 lượt tương tác vào trí nhớ dài hạn.[/dim]")
 
     if args.output:
         with open(args.output, 'w', encoding='utf-8') as f:
@@ -252,135 +352,45 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
 
 
 def _handle_history_flow(console: Console, config: dict, language: str, args, cli_help_text: str, provided_args):
+    """Xử lý các luồng liên quan đến history (load, summarize, print_log).
+
+    Trả về (history, should_exit):
+    - history: danh sách entry history đã load (hoặc None).
+    - should_exit: True nếu đã hoàn thành tác vụ history và không cần tiếp tục main flow.
+    """
     history = None
 
-    # --- Xử lý History Browser ---
-    if args.history and not provided_args:
-        selected_file = history_handler.show_history_browser(console)
-        if selected_file:
-            # Tải lịch sử trước khi hỏi
-            try:
-                with open(selected_file, 'r', encoding='utf-8') as f:
-                    history = json.load(f).get("history", [])
-            except Exception as e:
-                console.print(f"[bold red]Lỗi khi tải file lịch sử: {e}[/bold red]")
-                return None, True
-            action = ''
-            while action not in ['c', 's', 'r', 'd', 'q']:
-                prompt_text = i18n.tr(language, "history_action_prompt")
-                console.print(f"[bold yellow]{escape(prompt_text)}[/bold yellow]", end="")
-                sys.stdout.flush()
-                action = input().lower().strip()
+    # Tải history từ --load hoặc --topic nếu có
+    file_to_load = None
+    if getattr(args, "load", None):
+        file_to_load = args.load
+    elif getattr(args, "topic", None):
+        file_to_load = os.path.join(
+            history_handler.HISTORY_DIR,
+            f"chat_{utils.sanitize_filename(args.topic)}.json",
+        )
 
-            if action == 'q':
-                console.print(i18n.tr(language, "action_quit"))
-                return None, True
-
-            if action == 'c':
-                args.load = selected_file
-                args.chat = True
-                args.print_log = True
-            elif action == 's':
-                history_handler.handle_history_summary(console, config, history, cli_help_text)
-                return None, True
-            elif action == 'r':
-                # Đổi tên lịch sử: cập nhật title trong JSON và đổi tên file
-                try:
-                    with open(selected_file, 'r', encoding='utf-8') as f:
-                        data = json.load(f)
-                except Exception:
-                    data = {}
-
-                old_title = data.get("title", os.path.basename(selected_file))
-                new_title = console.input(
-                    i18n.tr(language, "history_rename_prompt"), markup=False
-                ).strip()
-
-                if not new_title:
-                    return None, True
-
-                data["title"] = new_title
-
-                from termi_cli import utils as _utils
-                from termi_cli.handlers.history_handler import HISTORY_DIR as _HIST_DIR
-
-                new_filename = f"chat_{_utils.sanitize_filename(new_title)}.json"
-                new_path = os.path.join(_HIST_DIR, new_filename)
-
-                # Tránh ghi đè file khác nếu trùng tên
-                if os.path.abspath(new_path) != os.path.abspath(selected_file) and os.path.exists(new_path):
-                    console.print(i18n.tr(language, "history_invalid_choice"))
-                    return None, True
-
-                try:
-                    # Đổi tên file trên đĩa
-                    if os.path.abspath(new_path) != os.path.abspath(selected_file):
-                        os.rename(selected_file, new_path)
-
-                    with open(new_path, 'w', encoding='utf-8') as f:
-                        json.dump(data, f, indent=2, ensure_ascii=False)
-
-                    console.print(
-                        i18n.tr(language, "history_rename_success", title=new_title)
-                    )
-                except Exception as e:
-                    console.print(i18n.tr(language, "chat_cannot_save_history_error", error=e))
-                return None, True
-            elif action == 'd':
-                # Xóa file lịch sử
-                try:
-                    title = None
-                    try:
-                        with open(selected_file, 'r', encoding='utf-8') as f:
-                            data = json.load(f)
-                            title = data.get("title", os.path.basename(selected_file))
-                    except Exception:
-                        title = os.path.basename(selected_file)
-
-                    confirm = console.input(
-                        i18n.tr(language, "history_delete_confirm", title=title),
-                        markup=False,
-                    ).strip().lower()
-
-                    if confirm == 'y':
-                        os.remove(selected_file)
-                        console.print(
-                            i18n.tr(language, "history_delete_success", title=title)
-                        )
-                except Exception as e:
-                    console.print(i18n.tr(language, "chat_cannot_save_history_error", error=e))
-                return None, True
-        else:
+    if file_to_load and os.path.exists(file_to_load):
+        try:
+            with open(file_to_load, 'r', encoding='utf-8') as f:
+                history = json.load(f).get("history", [])
+            console.print(i18n.tr(language, "history_loaded_from_file", path=file_to_load))
+        except Exception as e:
+            console.print(f"[bold red]Lỗi khi tải lịch sử: {e}[/bold red]")
             return None, True
 
-    # --- Xử lý các lệnh liên quan đến tải lịch sử (nếu không qua --history) ---
-    if not history:
-        file_to_load = None
-        if args.load:
-            file_to_load = args.load
-        elif args.topic:
-            file_to_load = os.path.join(history_handler.HISTORY_DIR, f"chat_{utils.sanitize_filename(args.topic)}.json")
-
-        if file_to_load and os.path.exists(file_to_load):
-            if not (args.history and args.chat):
-                try:
-                    with open(file_to_load, 'r', encoding='utf-8') as f:
-                        history = json.load(f).get("history", [])
-                    console.print(i18n.tr(language, "history_loaded_from_file", path=file_to_load))
-                except Exception as e:
-                    console.print(f"[bold red]Lỗi khi tải lịch sử: {e}[/bold red]")
-                    return None, True
-
-    if args.summarize:
+    # Tóm tắt history nếu được yêu cầu
+    if getattr(args, "summarize", False):
         if history:
             history_handler.handle_history_summary(console, config, history, cli_help_text)
         else:
             console.print(i18n.tr(language, "no_history_to_summarize"))
         return history, True
 
-    if args.print_log and history:
+    # In log history nếu được yêu cầu
+    if getattr(args, "print_log", False) and history:
         history_handler.print_formatted_history(console, history)
-        if not (args.chat or args.topic):
+        if not (getattr(args, "chat", False) or getattr(args, "topic", None)):
             return history, True
 
     return history, False
@@ -516,25 +526,38 @@ def main(provided_args=None):
             config_handler.remove_profile(console, config, args.rm_profile)
             return
 
+        # Cho phép liệt kê tools mà không cần GOOGLE_API_KEY
+        if getattr(args, "list_tools", False):
+            api.list_tools(console)
+            return
+
+        requires_gemini = _requires_gemini_for_command(config, args)
+
+        # Nếu lệnh yêu cầu Gemini nhưng SDK không khả dụng (ví dụ Python 3.14),
+        # dừng sớm với thông báo rõ ràng.
+        if requires_gemini and not getattr(api, "GEMINI_AVAILABLE", True):
+            console.print(
+                "[bold red]Lệnh này yêu cầu Gemini, nhưng Gemini SDK hiện không hoạt động trên phiên bản Python này "
+                "(có thể do Python 3.14). Hãy dùng model HTTP (deepseek-/groq-/OpenRouter) hoặc chạy Termi trên Python 3.11/3.12.[/bold red]"
+            )
+            return
+
         keys = api.initialize_api_keys()
 
-        if not keys:
+        if not keys and requires_gemini:
             console.print(i18n.tr(language, "error_no_api_key"))
             return
 
-        if len(keys) > 1:
-            console.print(i18n.tr(language, "api_keys_loaded", count=len(keys)))
+        if keys and getattr(api, "GEMINI_AVAILABLE", True):
+            if len(keys) > 1:
+                console.print(i18n.tr(language, "api_keys_loaded", count=len(keys)))
 
-        api.configure_api(keys[0])
+            api.configure_api(keys[0])
 
         # --- Xử lý các lệnh tiện ích (thoát ngay sau khi chạy) ---
         if args.list_models:
             api.list_models(console)
             return
-        if getattr(args, "list_tools", False):
-            api.list_tools(console)
-            return
-
         if args.set_model:
             config_handler.model_selection_wizard(console, config)
             return

@@ -6,7 +6,12 @@ from rich.console import Console
 
 from termi_cli.handlers import agent_handler
 from termi_cli import i18n
-from termi_cli.api import RPDQuotaExhausted
+from termi_cli.api import (
+    RPDQuotaExhausted,
+    DeepseekInsufficientBalance,
+    GroqInsufficientBalance,
+    OpenRouterInsufficientBalance,
+)
 
 
 def _make_args(**kwargs):
@@ -481,3 +486,311 @@ def test_execute_simple_task_prints_dry_run_header_when_flag_set(mocker, monkeyp
     dry_run_header = i18n.tr("vi", "agent_dry_run_mode_header")
     printed_args = [call.args[0] for call in console.print.call_args_list]
     assert dry_run_header in printed_args
+
+
+def test_get_safe_agent_model_allows_http_when_flag_true(mocker):
+    """_get_safe_agent_model: khi agent_allow_http=True thì giữ nguyên HTTP model, không in cảnh báo fallback."""
+
+    console = mocker.MagicMock(spec=Console)
+
+    config = {
+        "language": "vi",
+        "agent_model": "deepseek-chat",
+        "agent_allow_http": True,
+        "default_model": "models/gemini-flash-latest",
+        "model_fallback_order": [
+            "models/gemini-flash-latest",
+            "models/gemini-pro-latest",
+        ],
+    }
+
+    model = agent_handler._get_safe_agent_model(console, config)
+
+    assert model == "deepseek-chat"
+    # Không in cảnh báo fallback khi HTTP agent được cho phép
+    assert console.print.call_count == 0
+
+
+def test_run_master_agent_uses_http_agent_when_allowed(mocker):
+    """run_master_agent: với agent_allow_http=True và agent_model HTTP phải đi qua nhánh HTTP (generate_text)."""
+
+    console = mocker.MagicMock(spec=Console)
+    args = _make_args(prompt="Demo goal via HTTP agent")
+
+    # Cấu hình cho phép HTTP agent
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.load_config",
+        return_value={
+            "language": "vi",
+            "agent_model": "deepseek-chat",
+            "agent_allow_http": True,
+        },
+    )
+
+    # Đảm bảo _get_safe_agent_model trả về đúng HTTP model (bỏ qua logic fallback bên trong trong test này)
+    mocker.patch(
+        "termi_cli.handlers.agent_handler._get_safe_agent_model",
+        return_value="deepseek-chat",
+    )
+
+    captured: dict = {}
+
+    def fake_generate_text(model_name, prompt, system_instruction=None):  # noqa: ARG001
+        captured["model_name"] = model_name
+        captured["prompt"] = prompt
+        captured["system_instruction"] = system_instruction
+
+        payload = json.dumps(
+            {
+                "task_type": "simple_task",
+                "step": {
+                    "thought": "t",
+                    "action": {"tool_name": "finish", "tool_args": {"answer": "ok"}},
+                },
+            }
+        )
+        return f"```json\n{payload}\n```"
+
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.api.generate_text",
+        side_effect=fake_generate_text,
+    )
+
+    # Nếu nhánh Gemini bị gọi trong test này, coi như lỗi
+    genai_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.api.genai.GenerativeModel",
+        side_effect=AssertionError("Gemini path should not be used for HTTP agent"),
+    )
+
+    exec_simple_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.execute_simple_task",
+        return_value=None,
+    )
+
+    agent_handler.run_master_agent(console, args)
+
+    # Đảm bảo nhánh HTTP được gọi
+    assert captured.get("model_name") == "deepseek-chat"
+    assert "task_type" in captured.get("prompt", "")
+    # Nhánh Gemini không được đụng tới
+    genai_mock.assert_not_called()
+    # Và Agent phải route sang simple_task executor với step tương ứng
+    exec_simple_mock.assert_called_once()
+
+
+def test_run_master_agent_http_agent_insufficient_balance_prints_unexpected_error(mocker):
+    """HTTP agent (DeepSeek) khi gặp DeepseekInsufficientBalance phải in lỗi và dừng, không thực thi plan."""
+
+    console = mocker.MagicMock(spec=Console)
+    args = _make_args(prompt="Goal via DeepSeek")
+
+    # Cấu hình cho phép HTTP agent + có Gemini fallback
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.load_config",
+        return_value={
+            "language": "vi",
+            "agent_model": "deepseek-chat",
+            "agent_allow_http": True,
+            "default_model": "models/gemini-flash-latest",
+            "model_fallback_order": [
+                "models/gemini-flash-latest",
+                "models/gemini-pro-latest",
+            ],
+        },
+    )
+
+    # HTTP agent gọi api.generate_text và gặp lỗi thiếu balance
+    gen_text_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.api.generate_text",
+        side_effect=DeepseekInsufficientBalance("Insufficient Balance"),
+    )
+
+    # Sau fallback, Agent phải dùng Gemini để phân tích plan
+    fake_model = object()
+    genai_model_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.api.genai.GenerativeModel",
+        return_value=fake_model,
+    )
+
+    plan = {"project_name": "Demo"}
+    success_payload = json.dumps({"task_type": "project_plan", "plan": plan})
+    success_resp = type("Resp", (), {"text": f"```json\n{success_payload}\n```"})
+
+    resilient_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.api.resilient_generate_content",
+        return_value=success_resp,
+    )
+
+    exec_project_mock = mocker.patch("termi_cli.handlers.agent_handler.execute_project_plan")
+
+    agent_handler.run_master_agent(console, args)
+
+    # HTTP generate_text được gọi đúng một lần với model DeepSeek
+    gen_text_mock.assert_called_once()
+
+    # Sau khi fallback, phải dùng Gemini model để phân tích
+    genai_model_mock.assert_called_once_with("models/gemini-flash-latest")
+    resilient_mock.assert_called_once_with(fake_model, mocker.ANY)
+
+    # Cuối cùng thực thi project_plan qua Gemini
+    exec_project_mock.assert_called_once()
+    _, exec_args, _ = exec_project_mock.mock_calls[0]
+    assert exec_args[2] == plan
+
+    printed = [str(call.args[0]) for call in console.print.call_args_list if call.args]
+    # In ra thông báo HTTP provider hết balance + thông báo chuyển sang Gemini
+    assert i18n.tr("vi", "http_insufficient_balance_single_turn", provider="DeepSeek") in printed
+    assert i18n.tr("vi", "http_switch_to_gemini_single_turn", fallback_model="models/gemini-flash-latest") in printed
+
+
+def test_run_master_agent_http_agent_invalid_initial_json_prints_error(mocker):
+    """HTTP agent khi trả về text không chứa JSON hợp lệ phải in thông báo JSON không hợp lệ và dừng."""
+
+    console = mocker.MagicMock(spec=Console)
+    args = _make_args(prompt="Goal via DeepSeek invalid JSON")
+
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.load_config",
+        return_value={
+            "language": "vi",
+            "agent_model": "deepseek-chat",
+            "agent_allow_http": True,
+        },
+    )
+
+    mocker.patch(
+        "termi_cli.handlers.agent_handler._get_safe_agent_model",
+        return_value="deepseek-chat",
+    )
+
+    # HTTP agent trả về text không có JSON => _extract_first_json_match trả về None
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.api.generate_text",
+        return_value="no-json-here",
+    )
+
+    exec_project_mock = mocker.patch("termi_cli.handlers.agent_handler.execute_project_plan")
+    exec_simple_mock = mocker.patch("termi_cli.handlers.agent_handler.execute_simple_task")
+
+    agent_handler.run_master_agent(console, args)
+
+    exec_project_mock.assert_not_called()
+    exec_simple_mock.assert_not_called()
+
+    printed = [str(call.args[0]) for call in console.print.call_args_list if call.args]
+    assert any("Agent không trả về JSON hợp lệ ban đầu." in text for text in printed)
+
+
+def test_run_master_agent_http_agent_groq_insufficient_balance_prints_unexpected_error(mocker):
+    """HTTP agent Groq khi gặp GroqInsufficientBalance phải in lỗi và dừng."""
+
+    console = mocker.MagicMock(spec=Console)
+    args = _make_args(prompt="Goal via Groq")
+
+    # Cấu hình cho phép HTTP agent + có Gemini fallback
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.load_config",
+        return_value={
+            "language": "vi",
+            "agent_model": "groq-chat",
+            "agent_allow_http": True,
+            "default_model": "models/gemini-flash-latest",
+            "model_fallback_order": [
+                "models/gemini-flash-latest",
+                "models/gemini-pro-latest",
+            ],
+        },
+    )
+
+    gen_text_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.api.generate_text",
+        side_effect=GroqInsufficientBalance("Groq quota error"),
+    )
+
+    fake_model = object()
+    genai_model_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.api.genai.GenerativeModel",
+        return_value=fake_model,
+    )
+
+    plan = {"project_name": "Demo Groq"}
+    success_payload = json.dumps({"task_type": "project_plan", "plan": plan})
+    success_resp = type("Resp", (), {"text": f"```json\n{success_payload}\n```"})
+
+    resilient_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.api.resilient_generate_content",
+        return_value=success_resp,
+    )
+
+    exec_project_mock = mocker.patch("termi_cli.handlers.agent_handler.execute_project_plan")
+
+    agent_handler.run_master_agent(console, args)
+
+    gen_text_mock.assert_called_once()
+    genai_model_mock.assert_called_once_with("models/gemini-flash-latest")
+    resilient_mock.assert_called_once_with(fake_model, mocker.ANY)
+
+    exec_project_mock.assert_called_once()
+    _, exec_args, _ = exec_project_mock.mock_calls[0]
+    assert exec_args[2] == plan
+
+    printed = [str(call.args[0]) for call in console.print.call_args_list if call.args]
+    assert i18n.tr("vi", "http_insufficient_balance_single_turn", provider="Groq") in printed
+    assert i18n.tr("vi", "http_switch_to_gemini_single_turn", fallback_model="models/gemini-flash-latest") in printed
+
+
+def test_run_master_agent_http_agent_openrouter_insufficient_balance_prints_unexpected_error(mocker):
+    """HTTP agent OpenRouter khi gặp OpenRouterInsufficientBalance phải in lỗi và dừng."""
+
+    console = mocker.MagicMock(spec=Console)
+    args = _make_args(prompt="Goal via OpenRouter")
+
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.load_config",
+        return_value={
+            "language": "vi",
+            "agent_model": "openai/gpt-4o-mini",
+            "agent_allow_http": True,
+            "default_model": "models/gemini-flash-latest",
+            "model_fallback_order": [
+                "models/gemini-flash-latest",
+                "models/gemini-pro-latest",
+            ],
+        },
+    )
+
+    gen_text_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.api.generate_text",
+        side_effect=OpenRouterInsufficientBalance("OpenRouter quota error"),
+    )
+
+    fake_model = object()
+    genai_model_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.api.genai.GenerativeModel",
+        return_value=fake_model,
+    )
+
+    plan = {"project_name": "Demo OpenRouter"}
+    success_payload = json.dumps({"task_type": "project_plan", "plan": plan})
+    success_resp = type("Resp", (), {"text": f"```json\n{success_payload}\n```"})
+
+    resilient_mock = mocker.patch(
+        "termi_cli.handlers.agent_handler.api.resilient_generate_content",
+        return_value=success_resp,
+    )
+
+    exec_project_mock = mocker.patch("termi_cli.handlers.agent_handler.execute_project_plan")
+
+    agent_handler.run_master_agent(console, args)
+
+    gen_text_mock.assert_called_once()
+    genai_model_mock.assert_called_once_with("models/gemini-flash-latest")
+    resilient_mock.assert_called_once_with(fake_model, mocker.ANY)
+
+    exec_project_mock.assert_called_once()
+    _, exec_args, _ = exec_project_mock.mock_calls[0]
+    assert exec_args[2] == plan
+
+    printed = [str(call.args[0]) for call in console.print.call_args_list if call.args]
+    assert i18n.tr("vi", "http_insufficient_balance_single_turn", provider="OpenRouter") in printed
+    assert i18n.tr("vi", "http_switch_to_gemini_single_turn", fallback_model="models/gemini-flash-latest") in printed

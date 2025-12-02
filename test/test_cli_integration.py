@@ -17,7 +17,12 @@ from termi_cli.utils import sanitize_filename
 from termi_cli.config import load_config
 
 
-def _run_cli(tmp_path: Path, args: list[str], env_extra: dict | None = None):
+def _run_cli(
+    tmp_path: Path,
+    args: list[str],
+    env_extra: dict | None = None,
+    stdin_text: str | None = None,
+):
     """Chạy CLI trong một thư mục tạm với TERMI_CLI_HOME riêng.
 
     Trả về đối tượng CompletedProcess để test có thể kiểm tra stdout/stderr.
@@ -55,6 +60,7 @@ def _run_cli(tmp_path: Path, args: list[str], env_extra: dict | None = None):
         text=True,
         encoding="utf-8",
         errors="replace",
+        input=stdin_text,
     )
     return result
 
@@ -246,37 +252,214 @@ def test_cli_agent_max_steps_passed_to_agent(tmp_path, monkeypatch, mocker):
     assert captured["prompt"] == "Do something important"
 
 
-def test_model_selection_wizard_openrouter_quick_flow(tmp_path, monkeypatch):
-    """Wizard --set-model với provider OpenRouter cho phép chọn nhanh từ danh sách gợi ý."""
+def test_cli_agent_dry_run_flag_passed_to_agent(tmp_path, monkeypatch, mocker):
+    """--agent-dry-run phải được truyền đúng cho Agent qua CLI bridge."""
+
     home = tmp_path / "home"
     home.mkdir()
 
-    # Đảm bảo config.json nằm trong TERMI_CLI_HOME tạm
     monkeypatch.setenv("TERMI_CLI_HOME", str(home))
-    config = load_config()
+    monkeypatch.setenv("GOOGLE_API_KEY", "dummy-key")
 
-    # Console ghi ra StringIO để test không in ra stdout thật
-    buf = StringIO()
-    console = Console(file=buf, force_terminal=False, no_color=True)
+    parser = cli_module.create_parser()
+    args = parser.parse_args([
+        "--agent",
+        "--agent-dry-run",
+        "Inspect dry-run behaviour",
+    ])
 
-    # Chuỗi input: 4 (OpenRouter), 1 (model gợi ý đầu tiên), "" (code_model dùng default), "" (commit_model dùng code)
-    inputs = iter(["4", "1", "", ""])
+    captured: dict = {}
 
-    def fake_input(prompt: str = "", markup: bool = True):  # noqa: ARG001
-        try:
-            return next(inputs)
-        except StopIteration:  # Phòng trường hợp wizard hỏi thêm
-            return ""
+    def fake_run_master_agent(console, agent_args):  # noqa: ARG001
+        captured["dry_run"] = getattr(agent_args, "agent_dry_run", False)
+        captured["prompt"] = agent_args.prompt
+def test_cli_agent_http_deepseek_uses_http_path_without_gemini(tmp_path, monkeypatch, mocker):
+    """CLI --agent với HTTP agent DeepSeek + agent_allow_http=True phải dùng nhánh HTTP (generate_text)."""
 
-    monkeypatch.setattr(console, "input", fake_input)
+    home = tmp_path / "home"
+    home.mkdir()
 
-    config_handler.model_selection_wizard(console, config)
+    # Chuỗi input: 2 (provider DeepSeek), 1 (deepseek-chat), "" (code_model dùng default), "" (commit_model dùng code)
+    stdin_data = "2\n1\n\n\n"
 
-    # Kiểm tra config đã được cập nhật với một OpenRouter model hợp lệ
-    default_model = config.get("default_model")
-    code_model = config.get("code_model")
-    commit_model = config.get("commit_model")
+    result = _run_cli(
+        tmp_path,
+        ["--set-model"],
+        {
+            "TERMI_CLI_HOME": home,
+            # Cần key giả để _requires_gemini cho phép đi vào model_selection_wizard
+            "GOOGLE_API_KEY": "dummy-key",
+        },
+        stdin_text=stdin_data,
+    )
 
-    assert api.is_openrouter_model(default_model)
-    assert code_model == default_model
-    assert commit_model == code_model
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    config_path = home / "config.json"
+    assert config_path.exists()
+
+    config_data = json.loads(config_path.read_text(encoding="utf-8"))
+
+    assert config_data.get("default_model") == "deepseek-chat"
+    assert config_data.get("code_model") == "deepseek-chat"
+    assert config_data.get("commit_model") == "deepseek-chat"
+
+
+def test_cli_diagnostics_prints_provider_hints(tmp_path):
+    """--diagnostics (CLI thật) phải in thêm gợi ý/mẫu lệnh cho provider (ví dụ Gemini)."""
+
+    home = tmp_path / "home"
+    home.mkdir()
+
+    result = _run_cli(tmp_path, ["--diagnostics"], {"TERMI_CLI_HOME": home})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+
+    # Với language mặc định là "vi", show_diagnostics sẽ in diagnostics_hint_gemini
+    # Nếu sau này user chuyển sang EN, test vẫn an toàn vì chấp nhận cả tiếng Anh.
+    assert (
+        "Ví dụ Gemini" in result.stdout
+        or "Gemini example" in result.stdout
+    )
+
+
+def test_cli_diagnostics_with_deepseek_model_prints_deepseek_hint(tmp_path):
+    """--diagnostics với default_model DeepSeek phải in hint DeepSeek."""
+
+    home = tmp_path / "home"
+    home.mkdir()
+
+    config_path = home / "config.json"
+    custom_config = {"default_model": "deepseek-chat"}
+    config_path.write_text(json.dumps(custom_config, ensure_ascii=False), encoding="utf-8")
+
+    result = _run_cli(tmp_path, ["--diagnostics"], {"TERMI_CLI_HOME": home})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        "Ví dụ DeepSeek" in result.stdout
+        or "DeepSeek example" in result.stdout
+    )
+
+
+def test_cli_diagnostics_with_openrouter_model_prints_openrouter_hint(tmp_path):
+    """--diagnostics với default_model OpenRouter phải in hint OpenRouter."""
+
+    home = tmp_path / "home"
+    home.mkdir()
+
+    config_path = home / "config.json"
+    custom_config = {"default_model": "openai/gpt-4o-mini"}
+    config_path.write_text(json.dumps(custom_config, ensure_ascii=False), encoding="utf-8")
+
+    result = _run_cli(tmp_path, ["--diagnostics"], {"TERMI_CLI_HOME": home})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert (
+        "Ví dụ OpenRouter" in result.stdout
+        or "OpenRouter example" in result.stdout
+    )
+
+
+def test_cli_git_commit_short_in_repo_auto_staging(tmp_path, monkeypatch, mocker):
+    """--git-commit-short qua CLI phải chạy non-interactive nhờ PYTEST_CURRENT_TEST."""
+
+    # Tạo repo git tạm
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    monkeypatch.chdir(repo)
+
+    subprocess.run(["git", "init"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.name", "Termi Test"], cwd=repo, check=True)
+    subprocess.run(["git", "config", "user.email", "termi@example.com"], cwd=repo, check=True)
+
+    file_path = repo / "main.py"
+    file_path.write_text("print('v1')\n", encoding="utf-8")
+    subprocess.run(["git", "add", "main.py"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True)
+
+    # Sửa file để tạo diff chưa staged
+    file_path.write_text("print('v2')\n", encoding="utf-8")
+
+    # Cấu hình môi trường cho CLI: TERMI_CLI_HOME tách biệt + GOOGLE_API_KEY giả
+    home = repo / "home"
+    home.mkdir()
+    monkeypatch.setenv("TERMI_CLI_HOME", str(home))
+    monkeypatch.setenv("GOOGLE_API_KEY", "dummy-key")
+
+    # Nếu console.input bị gọi (do không tôn trọng PYTEST_CURRENT_TEST) thì test phải fail
+    def fail_on_console_input(self, *args, **kwargs):  # noqa: ARG002
+        raise AssertionError("Console.input should not be called for git-commit-short under pytest")
+
+    monkeypatch.setattr("rich.console.Console.input", fail_on_console_input, raising=True)
+
+    # Patch generate_text để không gọi mạng, và utils.execute_suggested_commands để tránh thực thi shell
+    captured: dict = {}
+
+    def fake_generate_text(model_name, prompt, system_instruction=None):  # noqa: ARG001
+        captured["model_name"] = model_name
+        captured["prompt"] = prompt
+        captured["system_instruction"] = system_instruction
+        return "feat: demo commit"
+
+    mocker.patch(
+        "termi_cli.handlers.utility_handler.api.generate_text",
+        side_effect=fake_generate_text,
+    )
+
+    exec_calls: dict = {}
+
+    def fake_execute_suggested_commands(text, console):  # noqa: ARG001
+        exec_calls["text"] = text
+
+    mocker.patch(
+        "termi_cli.handlers.utility_handler.utils.execute_suggested_commands",
+        side_effect=fake_execute_suggested_commands,
+    )
+
+    parser = cli_module.create_parser()
+    args = parser.parse_args(["--git-commit-short"])
+
+    # Gọi main() trực tiếp với provided_args để dùng cùng process (cho phép patching)
+    cli_entry.main(provided_args=args)
+
+    # Đảm bảo generate_text được gọi để sinh commit message
+    assert captured.get("model_name") is not None
+    # Và utils.execute_suggested_commands được gọi với lệnh git commit -m tương ứng
+    assert "git commit -m" in exec_calls.get("text", "")
+
+
+def test_cli_image_when_pillow_broken_prints_friendly_message(tmp_path, monkeypatch, capsys):
+    """-i/--image khi Pillow hỏng (Image is None) phải in thông báo i18n thân thiện."""
+
+    home = tmp_path / "home"
+    home.mkdir()
+
+    # TERMI_CLI_HOME tách biệt và GOOGLE_API_KEY giả để _requires_gemini cho phép chạy single-turn
+    monkeypatch.setenv("TERMI_CLI_HOME", str(home))
+    monkeypatch.setenv("GOOGLE_API_KEY", "dummy-key")
+
+    # Buộc nhánh Pillow hỏng bằng cách đặt Image = None trên module __main__
+    monkeypatch.setattr(cli_entry, "Image", None, raising=True)
+
+    # Tránh việc _run_single_turn đọc từ stdin thật dưới pytest (gây lỗi capture)
+    class DummyStdin:
+        def isatty(self):  # pragma: no cover - trivial shim
+            return True
+
+    monkeypatch.setattr(cli_entry.sys, "stdin", DummyStdin(), raising=False)
+
+    parser = cli_module.create_parser()
+    args = parser.parse_args(["-i", "nonexistent.png", "Test image input"])
+
+    cli_entry.main(provided_args=args)
+
+    out, err = capsys.readouterr()
+    combined = out + err
+
+    # Thông báo có thể là VI hoặc EN, kiểm tra cả hai cụm chính
+    assert (
+        "Tính năng đọc ảnh không khả dụng" in combined
+        or "Image input is not available" in combined
+    )

@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
+from rich.console import Console
 from termi_cli import config
+from termi_cli.handlers import config_handler
 
 def test_load_and_save_config(tmp_path):
     """
@@ -45,3 +47,38 @@ def test_load_default_config_if_not_exists(tmp_path):
     # Kiểm tra một vài giá trị mặc định quan trọng
     assert "default_model" in loaded_config
     assert loaded_config["personas"] == {}
+
+def test_show_diagnostics_prints_provider_hints(mocker):
+    """show_diagnostics phải in thêm gợi ý/mẫu lệnh cho provider (ví dụ Gemini)."""
+
+    console = Console(record=True)
+
+    test_config = {
+        "language": "vi",
+        "default_model": "models/gemini-flash-latest",
+        "code_model": None,
+        "commit_model": None,
+        "agent_model": "models/gemini-pro-latest",
+    }
+
+    mocker.patch(
+        "termi_cli.handlers.config_handler.api.initialize_api_keys",
+        return_value=[],
+    )
+    mocker.patch(
+        "termi_cli.handlers.config_handler.api.initialize_deepseek_api_keys",
+        return_value=[],
+    )
+    mocker.patch(
+        "termi_cli.handlers.config_handler.api.initialize_groq_api_keys",
+        return_value=[],
+    )
+    mocker.patch(
+        "termi_cli.handlers.config_handler.api.initialize_openrouter_api_keys",
+        return_value=[],
+    )
+
+    config_handler.show_diagnostics(console, test_config)
+    output = console.export_text()
+
+    assert "Ví dụ Gemini" in output

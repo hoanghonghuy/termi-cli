@@ -33,6 +33,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "error_image_not_found": "[bold red]Lỗi: Không tìm thấy file ảnh '{path}'[/bold red]",
         "error_opening_image": "[bold red]Lỗi khi mở ảnh '{path}': {error}[/bold red]",
         "images_loaded_count": "[green]Đã tải lên {count} ảnh.[/green]",
+        "image_support_not_available": "[bold red]Lỗi: Tính năng đọc ảnh không khả dụng trên phiên bản Python/Pillow hiện tại.[/bold red]",
         "file_saved_to": "\n[bold green]\u2705 Đã lưu kết quả vào file: [cyan]{path}[/cyan][/bold green]",
         "interrupted_by_user": "\n[yellow]Đã dừng bởi người dùng.[/yellow]",
         "unexpected_startup_error": "[bold red]Đã xảy ra lỗi khởi động không mong muốn: {error}[/bold red]",
@@ -40,6 +41,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "http_switch_to_gemini_single_turn": "[yellow]Đang chuyển tạm sang model Gemini '[cyan]{fallback_model}[/cyan]' cho lượt hỏi này.[/yellow]",
         "http_insufficient_balance_chat": "[bold red]{provider} báo lỗi Insufficient Balance. Không thể tiếp tục dùng {provider} cho phiên chat này.[/bold red]",
         "http_switch_to_gemini_chat": "[yellow]Đang chuyển tạm sang model Gemini '[cyan]{fallback_model}[/cyan]' cho phần còn lại của phiên chat.[/yellow]",
+        "http_chat_offer_switch_to_gemini": "Bạn có muốn chuyển sang model Gemini '[cyan]{fallback_model}[/cyan]' và bắt đầu một phiên chat mới không? (y/n): ",
 
         # History browser & hiển thị lịch sử
         "history_scanning_files": "[bold green]Đang quét các file lịch sử trong `{dir}/`...[/bold green]",
@@ -118,6 +120,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "diagnostics_deepseek_keys": "[dim]🔑 DEEPSEEK_API_KEY*: {count} key(s) trong môi trường.[/dim]",
         "diagnostics_groq_keys": "[dim]🔑 GROQ_API_KEY*: {count} key(s) trong môi trường.[/dim]",
         "diagnostics_openrouter_keys": "[dim]🔑 OPENROUTER_API_KEY*: {count} key(s) trong môi trường.[/dim]",
+        "diagnostics_hint_gemini": "[dim]Ví dụ Gemini: đặt GOOGLE_API_KEY, sau đó chạy `termi --chat` hoặc `termi --agent \"Xây API CRUD cho User\"`.[/dim]",
+        "diagnostics_hint_deepseek": "[dim]Ví dụ DeepSeek: đặt DEEPSEEK_API_KEY rồi chạy `termi -m deepseek-chat \"Giải thích đoạn code này\"`.[/dim]",
+        "diagnostics_hint_groq": "[dim]Ví dụ Groq: đặt GROQ_API_KEY rồi chạy `termi -m groq-chat --chat` để trò chuyện nhanh.[/dim]",
+        "diagnostics_hint_openrouter": "[dim]Ví dụ OpenRouter: đặt OPENROUTER_API_KEY rồi chạy `termi -m openai/gpt-4o-mini \"Giải thích lỗi này\"`.[/dim]",
         "config_invalid_choice": "[bold red]Lựa chọn không hợp lệ, vui lòng thử lại.[/bold red]",
         "config_please_enter_number": "[bold red]Vui lòng nhập một con số.[/bold red]",
         "config_selection_cancelled": "\n[yellow]Đã hủy lựa chọn.[/yellow]",
@@ -159,6 +165,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         # Git & tiện ích code
         "git_no_changes_to_commit": "[yellow]Không có thay đổi nào trong repository để commit.[/yellow]",
         "git_auto_staging": "[yellow]Đang tự động stage tất cả các thay đổi (`git add .`)...[/yellow]",
+        "git_auto_staging_confirm": "Bạn có muốn tự động stage tất cả các thay đổi với `git add .`? (y/n): ",
+        "git_auto_staging_cancelled": "[yellow]Đã hủy thao tác tự động stage thay đổi. Hãy tự stage file rồi chạy lại lệnh git-commit nếu cần.[/yellow]",
         "git_no_staged_changes": "[yellow]Không có thay đổi nào được staged để commit sau khi chạy 'git add'.[/yellow]",
         "git_request_ai_commit_message": "\n[dim]\U0001f916 Đang yêu cầu AI viết commit message...[/dim]",
         "git_error_command": "[bold red]Lỗi khi chạy lệnh git: {error}[/bold red]",
@@ -248,6 +256,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "error_image_not_found": "[bold red]Error: Image file '{path}' not found[/bold red]",
         "error_opening_image": "[bold red]Error while opening image '{path}': {error}[/bold red]",
         "images_loaded_count": "[green]Loaded {count} image(s).[/green]",
+        "image_support_not_available": "[bold red]Error: Image input is not available on this Python/Pillow version.[/bold red]",
         "file_saved_to": "\n[bold green]\u2705 Saved result to file: [cyan]{path}[/cyan][/bold green]",
         "interrupted_by_user": "\n[yellow]Interrupted by user.[/yellow]",
         "unexpected_startup_error": "[bold red]An unexpected startup error occurred: {error}[/bold red]",
@@ -255,6 +264,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "http_switch_to_gemini_single_turn": "[yellow]Temporarily switching to Gemini model '[cyan]{fallback_model}[/cyan]' for this request.[/yellow]",
         "http_insufficient_balance_chat": "[bold red]{provider} reported Insufficient Balance. Cannot continue using {provider} for this chat session.[/bold red]",
         "http_switch_to_gemini_chat": "[yellow]Temporarily switching to Gemini model '[cyan]{fallback_model}[/cyan]' for the rest of this chat session.[/yellow]",
+        "http_chat_offer_switch_to_gemini": "Do you want to switch to Gemini model '[cyan]{fallback_model}[/cyan]' and start a new chat session? (y/n): ",
 
         # History browser & view
         "history_scanning_files": "[bold green]Scanning history files in `{dir}/`...[/bold green]",
@@ -333,6 +343,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "diagnostics_deepseek_keys": "[dim]🔑 DEEPSEEK_API_KEY*: {count} key(s) detected in environment.[/dim]",
         "diagnostics_groq_keys": "[dim]🔑 GROQ_API_KEY*: {count} key(s) detected in environment.[/dim]",
         "diagnostics_openrouter_keys": "[dim]🔑 OPENROUTER_API_KEY*: {count} key(s) detected in environment.[/dim]",
+        "diagnostics_hint_gemini": "[dim]Gemini example: set GOOGLE_API_KEY, then run `termi --chat` or `termi --agent \"Build a CRUD API for User\"`.[/dim]",
+        "diagnostics_hint_deepseek": "[dim]DeepSeek example: set DEEPSEEK_API_KEY then run `termi -m deepseek-chat \"Explain this code\"`.[/dim]",
+        "diagnostics_hint_groq": "[dim]Groq example: set GROQ_API_KEY then run `termi -m groq-chat --chat` for a fast chat session.[/dim]",
+        "diagnostics_hint_openrouter": "[dim]OpenRouter example: set OPENROUTER_API_KEY then run `termi -m openai/gpt-4o-mini \"Explain this error\"`.[/dim]",
         "config_invalid_choice": "[bold red]Invalid choice, please try again.[/bold red]",
         "config_please_enter_number": "[bold red]Please enter a number.[/bold red]",
         "config_selection_cancelled": "\n[yellow]Selection cancelled.[/yellow]",
@@ -374,6 +388,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         # Git & code utilities
         "git_no_changes_to_commit": "[yellow]No changes in the repository to commit.[/yellow]",
         "git_auto_staging": "[yellow]Automatically staging all changes (`git add .`)...[/yellow]",
+        "git_auto_staging_confirm": "Do you want to automatically stage all changes with `git add .`? (y/n): ",
+        "git_auto_staging_cancelled": "[yellow]Auto-staging was cancelled. Please stage files manually and rerun git-commit if needed.[/yellow]",
         "git_no_staged_changes": "[yellow]No staged changes to commit after running 'git add'.[/yellow]",
         "git_request_ai_commit_message": "\n[dim]\U0001f916 Requesting AI to write a commit message...[/dim]",
         "git_error_command": "[bold red]Error while running git command: {error}[/bold red]",

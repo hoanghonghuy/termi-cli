@@ -12,8 +12,20 @@ import json
 import urllib.request
 import urllib.error
 
-import google.generativeai as genai
-from google.api_core.exceptions import ResourceExhausted
+try:
+    import google.generativeai as genai
+    from google.api_core.exceptions import ResourceExhausted
+    GEMINI_AVAILABLE = True
+except Exception:
+    genai = None  # type: ignore[assignment]
+
+    class ResourceExhausted(Exception):  # type: ignore[no-redef]
+        """Fallback khi không import được google.api_core.exceptions (ví dụ Python 3.14)."""
+
+        pass
+
+    GEMINI_AVAILABLE = False
+
 from rich.table import Table
 from rich.console import Console
 
@@ -532,6 +544,13 @@ def generate_text(model_name: str, prompt: str, system_instruction: str | None =
         except Exception:
             return json.dumps(response, ensure_ascii=False)
 
+    if not GEMINI_AVAILABLE:
+        _console.print(
+            "[bold red]Gemini SDK không khả dụng trên phiên bản Python hiện tại (có thể do Python 3.14). "
+            "Hãy sử dụng model HTTP (deepseek-/groq-/OpenRouter) hoặc chạy Termi trên Python 3.11/3.12 để dùng Gemini.[/bold red]"
+        )
+        raise RuntimeError("Gemini SDK unavailable in this Python environment")
+
     model_kwargs = {}
     if system_instruction is not None:
         model_kwargs["system_instruction"] = system_instruction
@@ -615,17 +634,52 @@ for _name, _func in _PLUGIN_TOOLS.items():
 
 def configure_api(api_key: str):
     """Cấu hình API key ban đầu."""
+    if not GEMINI_AVAILABLE:
+        raise RuntimeError(
+            "Gemini SDK không khả dụng trong môi trường hiện tại. "
+            "Hãy dùng model HTTP (deepseek-/groq-/OpenRouter) hoặc chuyển sang Python 3.11/3.12."
+        )
     genai.configure(api_key=api_key)
 
 
 def get_available_models() -> list[str]:
     """Lấy danh sách các model name hỗ trợ generateContent."""
+    if not GEMINI_AVAILABLE:
+        return []
     models = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
     return models
 
 
 def list_models(console: Console):
     """Liệt kê các model có sẵn."""
+    if not GEMINI_AVAILABLE:
+        console.print(
+            "[bold red]Gemini SDK không khả dụng trên phiên bản Python hiện tại (có thể do Python 3.14). "
+            "Không thể gọi trực tiếp danh sách model Gemini.[/bold red]"
+        )
+
+        # Hiển thị một bảng gợi ý các model HTTP phổ biến để người dùng tham khảo nhanh.
+        table = Table(title="✨ Một số models HTTP gợi ý (DeepSeek/Groq/OpenRouter) ✨")
+        table.add_column("Provider", style="green", no_wrap=True)
+        table.add_column("Model Name", style="cyan", no_wrap=True)
+        table.add_column("Description", style="magenta")
+
+        recommendations = [
+            ("🟣 DeepSeek", "deepseek-chat", "Chat tổng quát, tốc độ tốt."),
+            ("🟣 DeepSeek", "deepseek-reasoner", "Model reasoning mạnh, phù hợp phân tích chuyên sâu."),
+            ("🟠 Groq", "groq-chat", "Alias chat nhanh dựa trên LLaMA 3.x."),
+            ("🟠 Groq", "groq-llama3-8b-8192", "Model 8B nhanh, phù hợp coding & trợ lý nhẹ."),
+            ("🔵 OpenRouter", "openai/gpt-4o-mini", "Model đa năng, phù hợp chat & coding nhẹ."),
+            ("🔵 OpenRouter", "google/gemma-2-27b-it", "Model mạnh, free-tier tốt cho coding & phân tích."),
+            ("🔵 OpenRouter", "meta-llama/llama-3.1-70b-instruct", "Model 70B mạnh cho reasoning & coding."),
+        ]
+
+        for provider_label, name, desc in recommendations:
+            table.add_row(provider_label, name, desc)
+
+        console.print(table)
+        return
+
     table = Table(title="✨ Danh sách Models Khả Dụng ✨")
     table.add_column("Provider", style="green", no_wrap=True)
     table.add_column("Model Name", style="cyan", no_wrap=True)
@@ -655,22 +709,66 @@ def list_tools(console: Console):
     console.print(table)
 
 
+class GeminiChatBackend:
+    """Backend nhẹ cho chat/tool-calls dùng Gemini.
+
+    Hiện tại chỉ wrap GenAI GenerativeModel/ChatSession để chuẩn bị cho kiềm soát đa provider sau này.
+    """
+
+    def __init__(
+        self,
+        model_name: str,
+        system_instruction: str | None = None,
+        history: list | None = None,
+        cli_help_text: str = "",
+    ) -> None:
+        if not GEMINI_AVAILABLE:
+            raise RuntimeError(
+                "Gemini SDK không khả dụng trong môi trường hiện tại. "
+                "Hãy dùng model HTTP (deepseek-/groq-/OpenRouter) hoặc chạy Termi trên Python 3.11/3.12."
+            )
+
+        enhanced_instruction = build_enhanced_instruction(cli_help_text)
+        if system_instruction:
+            enhanced_instruction = (
+                "**PRIMARY DIRECTIVE (User-defined rules):**\n"  # giữ đúng format cũ
+                f"{system_instruction}\n\n---\n\n{enhanced_instruction}"
+            )
+
+        tools_config = list(AVAILABLE_TOOLS.values())
+
+        self.model = genai.GenerativeModel(
+            model_name,
+            system_instruction=enhanced_instruction,
+            tools=tools_config,
+        )
+        self.chat = self.model.start_chat(history=history or [])
+
+    def start_session(self):
+        return self.chat
+
+    def send_stream(self, message):
+        return self.chat.send_message(message, stream=True)
+
+    def send_resilient(self, message):
+        return _resilient_api_call(self.chat.send_message, message)
+
+
 def start_chat_session(model_name: str, system_instruction: str = None, history: list = None, cli_help_text: str = ""):
     """Khởi tạo chat session."""
-    enhanced_instruction = build_enhanced_instruction(cli_help_text)
-    if system_instruction:
-        enhanced_instruction = f"**PRIMARY DIRECTIVE (User-defined rules):**\n{system_instruction}\n\n---\n\n{enhanced_instruction}"
+    if not GEMINI_AVAILABLE:
+        raise RuntimeError(
+            "Gemini SDK không khả dụng trong môi trường hiện tại. "
+            "Hãy dùng model HTTP (deepseek-/groq-/OpenRouter) hoặc chạy Termi trên Python 3.11/3.12."
+        )
 
-    tools_config = list(AVAILABLE_TOOLS.values())
-
-    model = genai.GenerativeModel(
-        model_name,
-        system_instruction=enhanced_instruction,
-        tools=tools_config
+    backend = GeminiChatBackend(
+        model_name=model_name,
+        system_instruction=system_instruction,
+        history=history,
+        cli_help_text=cli_help_text,
     )
-
-    chat = model.start_chat(history=history or [])
-    return chat
+    return backend.start_session()
 
 
 def get_token_usage(response):
@@ -728,6 +826,8 @@ def get_response_text(response) -> str:
 
 def get_model_token_limit(model_name: str) -> int:
     """Lấy token limit của model."""
+    if not GEMINI_AVAILABLE:
+        return 0
     try:
         model_info = genai.get_model(model_name)
         if hasattr(model_info, 'input_token_limit'):
@@ -739,6 +839,7 @@ def get_model_token_limit(model_name: str) -> int:
     except Exception:
         pass
     return 0
+
 
 def initialize_api_keys():
     """Khởi tạo danh sách API keys từ .env và reset trạng thái."""
@@ -762,13 +863,19 @@ def initialize_api_keys():
     
     return _api_keys
 
+
 def switch_to_next_api_key():
     """Hàm nội bộ để chuyển sang API key tiếp theo và quay vòng."""
     global _current_api_key_index, _api_keys
+    if not GEMINI_AVAILABLE:
+        raise RuntimeError(
+            "Gemini SDK không khả dụng trong môi trường hiện tại, không thể xoay GOOGLE_API_KEY."
+        )
     _current_api_key_index = (_current_api_key_index + 1) % len(_api_keys)
     new_key = _api_keys[_current_api_key_index]
     genai.configure(api_key=new_key)
     return f"Key #{_current_api_key_index + 1}"
+
 
 class RPDQuotaExhausted(Exception):
     """Exception tùy chỉnh để báo hiệu cần tái tạo session."""

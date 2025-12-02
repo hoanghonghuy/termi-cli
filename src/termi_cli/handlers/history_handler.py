@@ -170,8 +170,31 @@ def handle_history_summary(
         "Tóm tắt của bạn:"
     )
 
+    model_name = config.get("default_model")
+
+    # Nếu default_model là HTTP provider (DeepSeek/Groq/OpenRouter), tóm tắt trực tiếp qua HTTP.
+    use_http = (
+        isinstance(model_name, str)
+        and (
+            model_name.startswith("deepseek-")
+            or model_name.startswith("groq-")
+            or api.is_openrouter_model(model_name)
+        )
+    )
+
     try:
-        model_name = config.get("default_model")
+        if use_http:
+            console.print(i18n.tr(language, "history_summary_title"))
+            response_text = api.generate_text(
+                model_name,
+                prompt,
+                system_instruction="You are a helpful summarizer.",
+            )
+            if response_text:
+                console.print(Markdown(response_text))
+            return
+
+        # Nhánh mặc định: dùng Gemini chat_session + handle_conversation_turn như trước đây.
         chat_session = api.start_chat_session(
             model_name,
             "You are a helpful summarizer.",
@@ -180,7 +203,12 @@ def handle_history_summary(
         )
 
         console.print(i18n.tr(language, "history_summary_title"))
-        handle_conversation_turn(chat_session, [prompt], console, args=argparse.Namespace(persona=None, format='rich', cli_help_text=cli_help_text))
+        handle_conversation_turn(
+            chat_session,
+            [prompt],
+            console,
+            args=argparse.Namespace(persona=None, format="rich", cli_help_text=cli_help_text),
+        )
 
     except Exception as e:
         console.print(i18n.tr(language, "error_history_summary", error=e))
