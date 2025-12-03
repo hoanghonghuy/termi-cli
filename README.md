@@ -78,6 +78,8 @@ termi --help
 
 - and the extra documentation in `docs/ADVANCED.md`.
 
+For the internal multi-provider routing and Provider abstraction (Gemini / DeepSeek / Groq / OpenRouter / Ollama), see the section ["Provider architecture (developers)"](docs/ADVANCED.md#provider-architecture-developers).
+
 ## Contributing
 
 We welcome all contributions to improve this CLI Agent. In short:

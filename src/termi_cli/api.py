@@ -11,6 +11,7 @@ import logging
 import json
 import urllib.request
 import urllib.error
+from abc import ABC, abstractmethod
 
 try:
     import google.generativeai as genai
@@ -600,7 +601,6 @@ def _ollama_cloud_chat_completions(model_name: str, messages: list[dict]) -> dic
     }
 
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             body = resp.read().decode("utf-8", errors="ignore")
@@ -616,6 +616,100 @@ def _ollama_cloud_chat_completions(model_name: str, messages: list[dict]) -> dic
             f"[bold red]Không thể kết nối tới Ollama Cloud API: {e}[/bold red]"
         )
         raise
+
+
+def _build_http_messages(prompt: str, system_instruction: str | None) -> list[dict]:
+    """Xây dựng danh sách messages chuẩn cho các provider HTTP (system + user)."""
+
+    messages: list[dict] = []
+    if system_instruction:
+        messages.append({"role": "system", "content": system_instruction})
+    messages.append({"role": "user", "content": prompt})
+    return messages
+
+
+def _extract_openai_message_text(response: dict) -> str:
+    """Trích xuất nội dung từ response dạng OpenAI Chat Completions.
+
+    Nếu cấu trúc không như mong đợi, fallback sang json.dumps để giúp debug.
+    """
+
+    try:
+        return response["choices"][0]["message"]["content"]
+    except Exception:
+        return json.dumps(response, ensure_ascii=False)
+
+
+def _detect_provider_kind(model_name: str) -> str:
+    if is_ollama_cloud_model(model_name):
+        return "ollama_cloud"
+    if is_ollama_model(model_name):
+        return "ollama"
+    if is_openrouter_model(model_name):
+        return "openrouter"
+    if isinstance(model_name, str) and model_name.startswith("deepseek-"):
+        return "deepseek"
+    if isinstance(model_name, str) and model_name.startswith("groq-"):
+        return "groq"
+    return "gemini"
+
+
+class BaseProvider(ABC):
+    @abstractmethod
+    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:  # pragma: no cover - interface
+        raise NotImplementedError
+
+
+class DeepseekProvider(BaseProvider):
+    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:
+        messages = _build_http_messages(prompt, system_instruction)
+        response = _resilient_deepseek_api_call(model_name, messages)
+        return _extract_openai_message_text(response)
+
+
+class GroqProvider(BaseProvider):
+    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:
+        groq_model = _normalize_groq_model(model_name)
+        messages = _build_http_messages(prompt, system_instruction)
+        response = _resilient_groq_api_call(groq_model, messages)
+        return _extract_openai_message_text(response)
+
+
+class OpenRouterProvider(BaseProvider):
+    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:
+        messages = _build_http_messages(prompt, system_instruction)
+        response = _resilient_openrouter_api_call(model_name, messages)
+        return _extract_openai_message_text(response)
+
+
+class OllamaProvider(BaseProvider):
+    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:
+        messages = _build_http_messages(prompt, system_instruction)
+        ollama_model = model_name.split("/", 1)[1] if "/" in model_name else model_name
+        response = _ollama_chat_completions(ollama_model, messages)
+        return _extract_openai_message_text(response)
+
+
+class OllamaCloudProvider(BaseProvider):
+    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:
+        messages = _build_http_messages(prompt, system_instruction)
+        cloud_model = model_name.split("/", 1)[1] if "/" in model_name else model_name
+        response = _ollama_cloud_chat_completions(cloud_model, messages)
+        try:
+            if "message" in response:
+                return response["message"]["content"]
+            return _extract_openai_message_text(response)
+        except Exception:
+            return json.dumps(response, ensure_ascii=False)
+
+
+_PROVIDER_REGISTRY: dict[str, BaseProvider] = {
+    "deepseek": DeepseekProvider(),
+    "groq": GroqProvider(),
+    "openrouter": OpenRouterProvider(),
+    "ollama": OllamaProvider(),
+    "ollama_cloud": OllamaCloudProvider(),
+}
 
 
 def generate_text(model_name: str, prompt: str, system_instruction: str | None = None) -> str:
@@ -637,69 +731,14 @@ def generate_text(model_name: str, prompt: str, system_instruction: str | None =
       gọi Ollama Cloud REST API với OLLAMA_API_KEY.
     - Các model còn lại: dùng Gemini như trước đây.
     """
-    if is_ollama_cloud_model(model_name):
-        messages: list[dict] = []
-        if system_instruction:
-            messages.append({"role": "system", "content": system_instruction})
-        messages.append({"role": "user", "content": prompt})
 
-        cloud_model = model_name.split("/", 1)[1] if "/" in model_name else model_name
-        response = _ollama_cloud_chat_completions(cloud_model, messages)
-        try:
-            return response["message"]["content"] if "message" in response else response["choices"][0]["message"]["content"]
-        except Exception:
-            return json.dumps(response, ensure_ascii=False)
+    provider_kind = _detect_provider_kind(model_name)
 
-    if is_ollama_model(model_name):
-        messages: list[dict] = []
-        if system_instruction:
-            messages.append({"role": "system", "content": system_instruction})
-        messages.append({"role": "user", "content": prompt})
-
-        # Truyền tên model thực tế trong Ollama (phần sau "ollama/").
-        ollama_model = model_name.split("/", 1)[1] if "/" in model_name else model_name
-        response = _ollama_chat_completions(ollama_model, messages)
-        try:
-            return response["choices"][0]["message"]["content"]
-        except Exception:
-            return json.dumps(response, ensure_ascii=False)
-
-    if is_openrouter_model(model_name):
-        messages: list[dict] = []
-        if system_instruction:
-            messages.append({"role": "system", "content": system_instruction})
-        messages.append({"role": "user", "content": prompt})
-
-        response = _resilient_openrouter_api_call(model_name, messages)
-        try:
-            return response["choices"][0]["message"]["content"]
-        except Exception:
-            return json.dumps(response, ensure_ascii=False)
-
-    if isinstance(model_name, str) and model_name.startswith("deepseek-"):
-        messages = []
-        if system_instruction:
-            messages.append({"role": "system", "content": system_instruction})
-        messages.append({"role": "user", "content": prompt})
-
-        response = _resilient_deepseek_api_call(model_name, messages)
-        try:
-            return response["choices"][0]["message"]["content"]
-        except Exception:
-            return json.dumps(response, ensure_ascii=False)
-
-    if isinstance(model_name, str) and model_name.startswith("groq-"):
-        groq_model = _normalize_groq_model(model_name)
-        messages = []
-        if system_instruction:
-            messages.append({"role": "system", "content": system_instruction})
-        messages.append({"role": "user", "content": prompt})
-
-        response = _resilient_groq_api_call(groq_model, messages)
-        try:
-            return response["choices"][0]["message"]["content"]
-        except Exception:
-            return json.dumps(response, ensure_ascii=False)
+    if provider_kind != "gemini":
+        provider = _PROVIDER_REGISTRY.get(provider_kind)
+        if provider is None:
+            raise RuntimeError(f"Unknown provider kind: {provider_kind}")
+        return provider.generate(model_name, prompt, system_instruction)
 
     if not GEMINI_AVAILABLE:
         _console.print(
@@ -766,6 +805,7 @@ def _load_plugin_tools() -> dict[str, callable]:  # type: ignore[name-defined]
 
 
 # Ánh xạ tên tool tới hàm thực thi
+_PLUGIN_TOOLS = _load_plugin_tools()
 AVAILABLE_TOOLS = {
     web_search.search_web.__name__: web_search.search_web,
     database.get_db_schema.__name__: database.get_db_schema,

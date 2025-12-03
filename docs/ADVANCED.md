@@ -133,6 +133,25 @@ Interactive terminals ask for confirmation; non-interactive runs skip it.
     - run Termi on a supported Python version (for example 3.10–3.12) where Gemini is fully available.
   - The test suite uses lightweight stubs so that Agent logic can still be tested even when the real Gemini SDK is not installed.
 
+## Provider architecture (developers)
+
+Termi routes all single-turn text generation through `api.generate_text(model_name, prompt, system_instruction=None)`:
+
+- A small helper `_detect_provider_kind(model_name)` maps the model name to a logical provider kind:
+  `deepseek`, `groq`, `openrouter`, `ollama`, `ollama_cloud`, or `gemini`.
+- For HTTP providers (`deepseek`, `groq`, `openrouter`, `ollama`, `ollama_cloud`), Termi uses a lightweight class-based abstraction:
+  - `BaseProvider` (abstract) defines `generate(model_name, prompt, system_instruction) -> str`.
+  - Concrete providers (`DeepseekProvider`, `GroqProvider`, `OpenRouterProvider`, `OllamaProvider`, `OllamaCloudProvider`) wrap the existing resilient HTTP helpers
+    such as `_resilient_deepseek_api_call`, `_resilient_groq_api_call`, `_resilient_openrouter_api_call`, `_ollama_chat_completions`, and `_ollama_cloud_chat_completions`.
+  - A simple registry `_PROVIDER_REGISTRY: dict[str, BaseProvider]` maps provider kinds to their instances.
+- `generate_text` calls the appropriate `BaseProvider.generate(...)` for HTTP providers, and keeps the original Gemini SDK path for `provider_kind == "gemini"`.
+
+To add a new HTTP provider, you typically:
+
+1. Extend `_detect_provider_kind` to return a new kind (e.g. `"mycloud"`) for specific model name patterns.
+2. Implement a `MyCloudProvider(BaseProvider)` that calls your HTTP API and returns the final text.
+3. Register it in `_PROVIDER_REGISTRY["mycloud"]`.
+
 ## Agent modes and tuning
 
 ### Modes
