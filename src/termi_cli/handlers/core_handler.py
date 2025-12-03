@@ -6,15 +6,15 @@ bao gồm gọi tool, xử lý lỗi quota, và retry cho chế độ chat thôn
 """
 
 import os
-import json
 import re
+
 import argparse
 from collections import namedtuple
 import logging
 
 from rich.console import Console
 from rich.markdown import Markdown
-from rich.panel import Panel
+
 try:
     from google.api_core.exceptions import ResourceExhausted, PermissionDenied, InvalidArgument
 except Exception:
@@ -28,6 +28,10 @@ except Exception:
 
 from termi_cli import api, i18n
 from termi_cli.config import load_config
+from termi_cli.json_utils import (
+    JsonPayloadParseError,
+    parse_json_payload,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -75,7 +79,7 @@ def accumulate_response_stream(response_stream):
                                 json_match = re.search(r'\{.*\}', cleaned_text, re.DOTALL)
                                 if json_match:
                                     json_str = json_match.group(0)
-                                    data = json.loads(json_str)
+                                    data = parse_json_payload(json_str)
                                     tool_name = data.get("tool_name", "").split(':')[-1]
                                     tool_args = data.get("tool_args", {})
                                     
@@ -88,7 +92,7 @@ def accumulate_response_stream(response_stream):
                                     full_text += part.text
                             else:
                                 full_text += part.text
-                        except json.JSONDecodeError:
+                        except JsonPayloadParseError:
                             full_text += part.text
     except Exception:
         logger.exception("Lỗi khi xử lý stream")

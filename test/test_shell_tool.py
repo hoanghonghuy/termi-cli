@@ -1,5 +1,3 @@
-import subprocess
-
 from termi_cli.tools import shell_tool
 
 

@@ -1,4 +1,3 @@
-import pytest
 import os
 from termi_cli import utils
 

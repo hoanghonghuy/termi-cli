@@ -1,9 +1,13 @@
 import os
 import json
+import logging
 from pathlib import Path
+
+from termi_cli.json_utils import JsonPayloadParseError, parse_json_payload
 
 APP_DIR = Path(os.getenv("TERMI_CLI_HOME") or (Path.home() / ".termi-cli"))
 _LEGACY_CONFIG_PATH = Path("config.json")
+logger = logging.getLogger(__name__)
 
 if _LEGACY_CONFIG_PATH.exists():
     CONFIG_PATH = _LEGACY_CONFIG_PATH
@@ -22,14 +26,21 @@ def load_config() -> dict:
     config_exists = CONFIG_PATH.exists()
 
     if config_exists:
-        with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
-            try:
-                config_data = json.load(f)
-            except json.JSONDecodeError:
-                # Nếu file hỏng, giữ nguyên để người dùng tự xử lý,
-                # và chỉ dùng defaults trong runtime mà không ghi đè.
-                pass
-                
+        try:
+            with open(CONFIG_PATH, 'r', encoding='utf-8') as f:
+                raw_content = f.read()
+            parsed = parse_json_payload(raw_content)
+            if isinstance(parsed, dict):
+                config_data = parsed
+            else:
+                logger.warning("Config file %s không phải JSON object, fallback về defaults", CONFIG_PATH)
+        except (OSError, JsonPayloadParseError) as err:
+            logger.warning(
+                "Không thể đọc config %s do JSON không hợp lệ: %s. Sẽ dùng defaults trong runtime.",
+                CONFIG_PATH,
+                err,
+            )
+
     # --- Cấu hình mặc định ---
     defaults = {
         "default_model": "models/gemini-flash-latest",

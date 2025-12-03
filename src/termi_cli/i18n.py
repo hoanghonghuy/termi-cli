@@ -233,9 +233,6 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "agent_mode_label": "[dim]Chế độ: {mode}[/dim]",
         "agent_session_summary": "[bold green]✅ Agent đã hoàn thành sau {steps} bước (dry-run: {flag}).[/bold green]",
         "agent_max_steps_override": "[dim]Giới hạn bước tối đa cho Agent trong phiên này: {max_steps} bước.[/dim]",
-        "config_ollama_cloud_model_prompt": "Nhập tag model Ollama Cloud (ví dụ: qwen3-coder:480b-cloud): ",
-        "config_ollama_cloud_api_hint": "[yellow]Nhắc: Ollama Cloud cần OLLAMA_API_KEY (https://ollama.com/settings/keys).[/yellow]",
-        "diagnostics_mini_agent_warnings": "[yellow]⚠️ Mini-agent config có cảnh báo:[/yellow]",
     },
     "en": {
         # General errors & bootstrap

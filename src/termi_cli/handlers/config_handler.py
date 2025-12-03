@@ -402,7 +402,7 @@ def remove_persona(console: Console, config: dict, name: str):
         console.print(i18n.tr(language, "config_persona_not_found", name=name))
         return
 
-    removed_instruction = personas.pop(name)
+    personas.pop(name)
     config["personas"] = personas
     save_config(config)
     console.print(

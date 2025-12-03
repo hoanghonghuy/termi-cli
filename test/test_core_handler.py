@@ -1,4 +1,3 @@
-from pathlib import Path
 from types import SimpleNamespace
 import json
 
@@ -323,6 +322,38 @@ def test_accumulate_response_stream_parses_embedded_json_tool_call():
     fc = function_calls[0]
     assert getattr(fc, "name") == "write_file"
     assert getattr(fc, "args") == {"path": "demo.txt", "content": "hi"}
+
+
+def test_accumulate_response_stream_handles_trailing_comma_json():
+    """accumulate_response_stream phải chịu được JSON có dấu phẩy dư cuối cùng."""
+
+    json_text = '{"tool_name": "write_file", "tool_args": {"path": "demo.txt"},}'
+
+    class Part:
+        def __init__(self, text):
+            self.text = text
+
+    class Content:
+        def __init__(self, parts):
+            self.parts = parts
+
+    class Candidate:
+        def __init__(self, content):
+            self.content = content
+
+    class Chunk:
+        def __init__(self, candidates):
+            self.candidates = candidates
+
+    stream = [Chunk([Candidate(Content([Part(json_text)]))])]
+
+    full_text, function_calls = core_handler.accumulate_response_stream(stream)
+
+    assert full_text == ""
+    assert len(function_calls) == 1
+    fc = function_calls[0]
+    assert getattr(fc, "name") == "write_file"
+    assert getattr(fc, "args") == {"path": "demo.txt"}
 
 
 def test_accumulate_response_stream_collects_native_function_calls():

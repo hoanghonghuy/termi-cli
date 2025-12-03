@@ -258,6 +258,38 @@ def test_run_master_agent_retries_on_quota_and_then_executes_plan(mocker):
     assert exec_args[2] == plan
 
 
+def test_run_master_agent_sanitizes_trailing_comma_json(mocker):
+    console = mocker.MagicMock(spec=Console)
+    args = _make_args(prompt="Demo goal")
+
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.load_config",
+        return_value={"language": "vi", "agent_model": "dummy-model"},
+    )
+
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.api.genai.GenerativeModel",
+        return_value=object(),
+    )
+
+    payload = '{"task_type": "project_plan",}'  # trailing comma invalid JSON
+    mocked_response = type(
+        "Resp",
+        (),
+        {"text": f"```json\n{payload}\n```"},
+    )
+
+    mocker.patch(
+        "termi_cli.handlers.agent_handler.api.resilient_generate_content",
+        return_value=mocked_response,
+    )
+
+    mock_exec_project = mocker.patch("termi_cli.handlers.agent_handler.execute_project_plan")
+
+    agent_handler.run_master_agent(console, args)
+
+    mock_exec_project.assert_called_once()
+
 def test_execute_project_plan_handles_quota_and_recreates_session(mocker):
     """execute_project_plan: khi gặp RPDQuotaExhausted trong bước executor, phải recreate session."""
     console = mocker.MagicMock(spec=Console)

@@ -5,15 +5,17 @@ gọi AI, hiển thị output và lưu lịch sử khi kết thúc.
 import os
 import json
 import argparse
+import re
 from datetime import datetime
 
 from rich.console import Console
 
 from termi_cli import utils, api, i18n
 from termi_cli.handlers import mini_agent
+from termi_cli.json_utils import JsonPayloadParseError, parse_json_payload
 
 from .core_handler import handle_conversation_turn, get_response_text_from_history, confirm_and_write_file
-from .history_handler import serialize_history, HISTORY_DIR
+from .history_handler import serialize_history, HISTORY_DIR, load_history_file
 
 
 def _get_gemini_fallback_model(config: dict) -> str:
@@ -42,8 +44,12 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
         ai_label = i18n.tr(language, "history_ai_label")
         while True:
             prompt = console.input(f"\n{user_label} ")
-            if prompt.lower().strip() in ["exit", "quit", "q"]: break
-            if not prompt.strip(): continue
+            if (
+                prompt.lower().strip() in ["exit", "quit", "q"]
+            ):
+                break
+            if not prompt.strip():
+                continue
 
             console.print(f"\n{ai_label}")
 
@@ -70,10 +76,9 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
 
         if save_path:
             try:
-                with open(save_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    title = data.get("title", os.path.basename(save_path))
-            except (FileNotFoundError, json.JSONDecodeError):
+                data = load_history_file(save_path)
+                title = data.get("title", os.path.basename(save_path))
+            except (FileNotFoundError, ValueError, OSError):
                 title = args.topic or os.path.splitext(os.path.basename(save_path))[0].replace("chat_", "")
         else:
             try:
@@ -87,10 +92,11 @@ def run_chat_mode(chat_session, console: Console, config: dict, args: argparse.N
                     initial_len = 0
                     if args.load or args.topic:
                         try:
-                            with open(args.load or initial_save_path, 'r', encoding='utf-8') as f:
-                                initial_data = json.load(f)
+                            initial_source = args.load or initial_save_path
+                            if initial_source:
+                                initial_data = load_history_file(initial_source)
                                 initial_len = len(initial_data.get("history", []))
-                        except (FileNotFoundError, TypeError, json.JSONDecodeError):
+                        except (FileNotFoundError, TypeError, ValueError, OSError):
                             initial_len = 0
 
                     if history_len <= initial_len:
@@ -281,15 +287,15 @@ def run_chat_mode_deepseek(console: Console, config: dict, args: argparse.Namesp
 
                 try:
                     cleaned = response_text.strip()
-                    if cleaned.startswith("{") and "\"tool_name\"" in cleaned:
-                        import json as _json
-                        import re as _re
-
-                        json_match = _re.search(r"\{.*\}", cleaned, _re.DOTALL)
+                    if cleaned.startswith("{") and cleaned.endswith("}") and "\"tool_name\"" in cleaned:
+                        json_match = re.search(r"\{.*\}", cleaned, re.DOTALL)
                         if json_match:
-                            data = _json.loads(json_match.group(0))
+                            data = parse_json_payload(json_match.group(0))
                             tool_name = data.get("tool_name")
                             tool_args = data.get("tool_args") or {}
+                except JsonPayloadParseError:
+                    tool_name = None
+                    tool_args = {}
                 except Exception:
                     tool_name = None
                     tool_args = {}

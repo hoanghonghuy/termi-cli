@@ -6,6 +6,7 @@ import os
 import json
 import glob
 import argparse
+import logging
 from datetime import datetime
 
 from rich.console import Console
@@ -15,9 +16,23 @@ from rich.table import Table
 from termi_cli import api, i18n, utils
 from termi_cli.config import load_config, APP_DIR
 from .core_handler import handle_conversation_turn
+from termi_cli.json_utils import JsonPayloadParseError, parse_json_payload
 
 # --- CONSTANTS ---
 HISTORY_DIR = str(APP_DIR / "chat_logs")
+logger = logging.getLogger(__name__)
+
+def load_history_file(file_path: str) -> dict:
+    """Đọc file history và parse JSON với sanitizer trailing comma."""
+
+    with open(file_path, "r", encoding="utf-8") as f:
+        raw_content = f.read()
+    try:
+        return parse_json_payload(raw_content)
+    except JsonPayloadParseError as err:
+        snippet = raw_content[:200].replace("\n", " ")
+        logger.warning("History '%s' chứa JSON không hợp lệ: %s", file_path, err)
+        raise ValueError(f"Invalid history JSON in {file_path}: {err}. Body: {snippet}") from err
 
 def print_formatted_history(console: Console, history: list):
     """In lịch sử trò chuyện đã tải ra màn hình."""
@@ -35,7 +50,6 @@ def print_formatted_history(console: Console, history: list):
             console.print(f"\n{i18n.tr(language, 'history_ai_label')}")
             console.print(Markdown(text))
     console.print(i18n.tr(language, "history_section_footer"))
-
 
 def serialize_history(history):
     """Chuyển đổi history thành format JSON có thể serialize một cách an toàn."""
@@ -65,7 +79,6 @@ def serialize_history(history):
             serializable.append(content_dict)
     return serializable
 
-
 def show_history_browser(console: Console, filter_query: str | None = None):
     language = load_config().get("language", "vi")
     console.print(
@@ -87,22 +100,23 @@ def show_history_browser(console: Console, filter_query: str | None = None):
     history_metadata = []
     for file_path in history_files:
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                title = data.get("title", os.path.basename(file_path))
-                last_modified_iso = data.get(
-                    "last_modified",
-                    datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat(),
-                )
-                history_metadata.append(
-                    {
-                        "title": title,
-                        "last_modified": last_modified_iso,
-                        "file_path": file_path,
-                    }
-                )
-        except Exception:
+            data = load_history_file(file_path)
+            title = data.get("title", os.path.basename(file_path))
+            last_modified_iso = data.get(
+                "last_modified",
+                datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat(),
+            )
+            history_metadata.append(
+                {
+                    "title": title,
+                    "last_modified": last_modified_iso,
+                    "file_path": file_path,
+                }
+            )
+        except (ValueError, OSError) as err:
+            logger.warning("Bỏ qua history '%s' vì lỗi đọc file: %s", file_path, err)
             continue
+
     history_metadata.sort(key=lambda x: x["last_modified"], reverse=True)
 
     if filter_query:
@@ -151,7 +165,6 @@ def show_history_browser(console: Console, filter_query: str | None = None):
         console.print(i18n.tr(language, "history_browser_exit"))
 
     return None
-
 
 def handle_history_summary(
     console: Console, config: dict, history: list, cli_help_text: str
@@ -224,15 +237,14 @@ def handle_history_summary(
         )
 
     except Exception as e:
+        logger.error("Lỗi tóm tắt lịch sử: %s", e)
         console.print(i18n.tr(language, "error_history_summary", error=e))
-
 
 def _resolve_history_file(target: str) -> str:
     """Chuyển một tham số generic (path hoặc topic) thành đường dẫn file lịch sử."""
     if os.path.exists(target):
         return target
     return os.path.join(HISTORY_DIR, f"chat_{utils.sanitize_filename(target)}.json")
-
 
 def delete_history_entry(console: Console, target: str) -> bool:
     """Xóa một lịch sử chat theo đường dẫn file hoặc topic (non-interactive)."""
@@ -246,23 +258,23 @@ def delete_history_entry(console: Console, target: str) -> bool:
     try:
         title = os.path.basename(file_path)
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                title = data.get("title", title)
+            data = load_history_file(file_path)
+            title = data.get("title", title)
         except Exception:
-            pass
+            logger.warning("Không thể đọc meta trước khi xoá history '%s'", file_path)
 
         os.remove(file_path)
         console.print(
             i18n.tr(language, "history_delete_success", title=title)
         )
+
         return True
     except Exception as e:
+        logger.error("Lỗi xóa lịch sử: %s", e)
         console.print(
             i18n.tr(language, "chat_cannot_save_history_error", error=e)
         )
         return False
-
 
 def rename_history_entry(console: Console, old: str, new_title: str) -> bool:
     """Đổi tên lịch sử chat theo path hoặc topic sang một tiêu đề mới (non-interactive)."""
@@ -279,8 +291,7 @@ def rename_history_entry(console: Console, old: str, new_title: str) -> bool:
 
     try:
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
-                data = json.load(f)
+            data = load_history_file(file_path)
         except Exception:
             data = {}
 

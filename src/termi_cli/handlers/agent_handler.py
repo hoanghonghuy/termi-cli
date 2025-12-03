@@ -3,7 +3,6 @@
 """
 Module xử lý các chế độ Agent, với cơ chế retry và chuyển đổi API key toàn cục.
 """
-import os
 import json
 import re
 import argparse
@@ -12,16 +11,18 @@ import time
 from rich.console import Console, Group
 from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.json import JSON
+
 from rich.text import Text
 from rich.tree import Tree
 from rich.table import Table
 
 from termi_cli import api, i18n
 from termi_cli.api import RPDQuotaExhausted # Import exception tùy chỉnh
+
 from termi_cli.prompts import build_agent_instruction, build_master_agent_prompt, build_executor_instruction
 from termi_cli.config import load_config
 from .core_handler import confirm_and_write_file
+from termi_cli.json_utils import JsonPayloadParseError, parse_json_payload
 
 
 def _format_plan_for_display(project_plan: dict) -> Panel:
@@ -107,6 +108,33 @@ def _extract_first_json_match(text: str):
     if not json_match:
         json_match = re.search(r'(\{.*?\})', text, re.DOTALL)
     return json_match
+
+
+class AgentJsonParseError(ValueError):
+    """Raised khi JSON của Agent không thể parse an toàn."""
+
+
+_MAX_AGENT_JSON_RETRIES = 3
+
+
+def _parse_agent_json_payload(payload: str) -> dict:
+    """Parse JSON với fallback loại bỏ dấu phẩy dư thừa trước khi đóng khối."""
+
+    try:
+        return parse_json_payload(payload)
+    except JsonPayloadParseError as original_err:
+        raise AgentJsonParseError(str(original_err)) from original_err
+
+
+def _print_json_retry_notice(console: Console, language: str, attempt: int, max_attempts: int):
+    if language == "vi":
+        console.print(
+            f"[yellow]JSON từ Agent không hợp lệ (lần {attempt}/{max_attempts}). Đang yêu cầu lại...[/yellow]"
+        )
+    else:
+        console.print(
+            f"[yellow]Agent returned invalid JSON (attempt {attempt}/{max_attempts}). Retrying...[/yellow]"
+        )
 
 
 def _get_safe_agent_model(console: Console, config: dict) -> str:
@@ -212,8 +240,10 @@ def run_master_agent(console: Console, args: argparse.Namespace):
 
     initial_response = None
     
+    attempt = 0
     while True:
         try:
+            attempt += 1
             agent_model_name = _get_safe_agent_model(console, config)
             master_prompt = build_master_agent_prompt(args.prompt)
 
@@ -248,9 +278,9 @@ def run_master_agent(console: Console, args: argparse.Namespace):
 
             json_match = _extract_first_json_match(raw_text)
             if not json_match:
-                raise ValueError("Agent không trả về JSON hợp lệ ban đầu.")
+                raise AgentJsonParseError("Agent không trả về JSON hợp lệ ban đầu.")
 
-            initial_response = json.loads(json_match.group(1))
+            initial_response = _parse_agent_json_payload(json_match.group(1))
             break 
 
         except RPDQuotaExhausted:
@@ -303,6 +333,14 @@ def run_master_agent(console: Console, args: argparse.Namespace):
             config["agent_model"] = fallback_model
             # Tắt cờ HTTP cho Agent để không quay lại HTTP trong session này.
             config["agent_allow_http"] = False
+            continue
+
+        except AgentJsonParseError as parse_err:
+            if attempt >= _MAX_AGENT_JSON_RETRIES:
+                console.print(str(parse_err))
+                return
+            _print_json_retry_notice(console, language, attempt, _MAX_AGENT_JSON_RETRIES)
+            time.sleep(0.5)
             continue
 
         except Exception as e:
@@ -371,7 +409,8 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
     dry_run = getattr(args, "agent_dry_run", False)
 
     if not project_plan:
-        console.print(i18n.tr(language, "agent_empty_project_plan_error")); return
+        console.print(i18n.tr(language, "agent_empty_project_plan_error"))
+        return
         
     display_panel = _format_plan_for_display(project_plan)
     console.print(display_panel)
@@ -425,6 +464,7 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
 
         dynamic_prompt = f"<scratchpad>\n{scratchpad}\n</scratchpad>\nBased on the plan and my scratchpad, what is the single next action I should take?"
         
+        json_attempt = 0
         while True:
             try:
                 if use_http_agent:
@@ -438,9 +478,9 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
                     raw_text = api.get_response_text(response)
                 json_match = _extract_first_json_match(raw_text)
                 if not json_match:
-                    raise ValueError("No valid JSON found.")
+                    raise AgentJsonParseError("No valid JSON found.")
 
-                plan = json.loads(json_match.group(1))
+                plan = _parse_agent_json_payload(json_match.group(1))
                 thought = plan.get("thought", "")
                 action = plan.get("action", {})
                 
@@ -492,6 +532,21 @@ def execute_project_plan(console: Console, args: argparse.Namespace, project_pla
                 scratchpad += f"\n\n**Step {step + 1}:**\n- **Thought:** {thought}\n- **Action:** Called `{tool_name}` with args `{tool_args}`.\n- **Observation:** {observation}"
                 break
 
+            except AgentJsonParseError as parse_err:
+                json_attempt += 1
+                if json_attempt >= _MAX_AGENT_JSON_RETRIES:
+                    console.print(
+                        i18n.tr(
+                            language,
+                            "agent_executor_unrecoverable_error",
+                            error=parse_err,
+                        )
+                    )
+                    return
+                _print_json_retry_notice(console, language, json_attempt, _MAX_AGENT_JSON_RETRIES)
+                time.sleep(0.5)
+                continue
+
             except RPDQuotaExhausted:
                 if use_http_agent:
                     raise
@@ -516,8 +571,9 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
     dry_run = getattr(args, "agent_dry_run", False)
 
     if not first_step:
-        console.print(i18n.tr(language, "agent_no_first_react_step")); return
-
+        console.print(i18n.tr(language, "agent_no_first_react_step"))
+        return
+    
     console.print(i18n.tr(language, "agent_simple_task_intro"))
     if dry_run:
         console.print(i18n.tr(language, "agent_dry_run_mode_header"))
@@ -548,6 +604,11 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
     
     current_step_json = first_step
     max_steps = getattr(args, "agent_max_steps", None) or 10
+    previous_observation: str | None = None
+    _react_followup_template = (
+        "This was the result of my last action:\n\n{observation}\n\n"
+        "Based on this, what is my next thought and action?"
+    )
 
     for step in range(max_steps):
         iteration_header = i18n.tr(
@@ -566,22 +627,37 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
             action = current_step_json.get("action", {})
         # Các bước tiếp theo sẽ được lấy từ API call
         else:
+            json_attempt = 0
             while True:
                 try:
+                    if previous_observation is None:
+                        console.print(
+                            i18n.tr(
+                                language,
+                                "agent_executor_unrecoverable_error",
+                                error="Missing observation for next prompt",
+                            )
+                        )
+                        return
+
+                    followup_prompt = _react_followup_template.format(
+                        observation=previous_observation
+                    )
                     if use_http_agent:
                         raw_text = api.generate_text(
                             agent_model_name,
-                            next_prompt,
+                            followup_prompt,
                             system_instruction=agent_instruction,
                         )
                     else:
-                        response = api.resilient_send_message(chat_session, next_prompt)
+                        response = api.resilient_send_message(chat_session, followup_prompt)
                         raw_text = api.get_response_text(response)
+                    
                     json_match = _extract_first_json_match(raw_text)
                     if not json_match:
-                        raise ValueError("No valid JSON found.")
+                        raise AgentJsonParseError("No valid JSON found.")
 
-                    current_step_json = json.loads(json_match.group(1))
+                    current_step_json = _parse_agent_json_payload(json_match.group(1))
                     thought = current_step_json.get("thought", "")
                     action = current_step_json.get("action", {})
                     break
@@ -590,6 +666,20 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
                         raise
                     console.print(i18n.tr(language, "agent_recreate_session_quota"))
                     chat_session = api.start_chat_session(model_name=agent_model_name, system_instruction=agent_instruction)
+                except AgentJsonParseError as parse_err:
+                    json_attempt += 1
+                    if json_attempt >= _MAX_AGENT_JSON_RETRIES:
+                        console.print(
+                            i18n.tr(
+                                language,
+                                "agent_executor_unrecoverable_error",
+                                error=parse_err,
+                            )
+                        )
+                        return
+                    _print_json_retry_notice(console, language, json_attempt, _MAX_AGENT_JSON_RETRIES)
+                    time.sleep(0.5)
+                    continue
                 except Exception as e:
                     console.print(
                         i18n.tr(
@@ -646,7 +736,7 @@ def execute_simple_task(console: Console, args: argparse.Namespace, first_step: 
                 )
             )
 
-            next_prompt = f"This was the result of my last action:\n\n{observation}\n\nBased on this, what is my next thought and action?"
+            previous_observation = observation
 
         except Exception as e:
             console.print(

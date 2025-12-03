@@ -1,5 +1,3 @@
-import os
-
 from termi_cli import memory
 
 

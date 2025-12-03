@@ -1,9 +1,7 @@
 import os
 import re
-import subprocess
 import sys
 from rich.console import Console
-from rich.markdown import Markdown
 from unidecode import unidecode
 from termi_cli.tools import shell_tool
 from termi_cli import i18n

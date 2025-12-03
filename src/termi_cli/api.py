@@ -52,6 +52,7 @@ from termi_cli.tools import instruction_tool
 from termi_cli.tools import code_tool
 from termi_cli.prompts import build_enhanced_instruction
 from termi_cli.config import APP_DIR
+from termi_cli.json_utils import JsonPayloadParseError, parse_json_payload
 
 _current_api_key_index = 0
 _api_keys = []
@@ -126,6 +127,19 @@ def initialize_deepseek_api_keys() -> list[str]:
     return _deepseek_api_keys
 
 
+def _parse_provider_json_response(body: str, provider: str) -> dict:
+    """Parse JSON từ HTTP provider với sanitizer để xử lý dấu phẩy dư."""
+
+    try:
+        return parse_json_payload(body)
+    except JsonPayloadParseError as err:
+        snippet = (body or "")[:200].replace("\n", " ")
+        _console.print(
+            f"[bold red]{provider} trả về JSON không hợp lệ: {err}. Body: {snippet}[/bold red]"
+        )
+        raise RuntimeError(f"{provider} returned invalid JSON") from err
+
+
 def switch_to_next_deepseek_key() -> str:
     """Chuyển sang DeepSeek API key tiếp theo và quay vòng giống logic Gemini."""
     global _deepseek_api_keys, _current_deepseek_key_index
@@ -186,7 +200,7 @@ def _resilient_deepseek_api_call(model_name: str, messages: list[dict]) -> dict:
             _last_deepseek_call_ts = time.time()
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body = resp.read().decode("utf-8", errors="ignore")
-                return json.loads(body)
+                return _parse_provider_json_response(body, "DeepSeek")
 
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="ignore")
@@ -318,7 +332,7 @@ def _resilient_groq_api_call(model_name: str, messages: list[dict]) -> dict:
             _last_groq_call_ts = time.time()
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body = resp.read().decode("utf-8", errors="ignore")
-                return json.loads(body)
+                return _parse_provider_json_response(body, "Groq")
 
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="ignore")
@@ -481,7 +495,7 @@ def _resilient_openrouter_api_call(model_name: str, messages: list[dict]) -> dic
             _last_openrouter_call_ts = time.time()
             with urllib.request.urlopen(req, timeout=60) as resp:
                 body = resp.read().decode("utf-8", errors="ignore")
-                return json.loads(body)
+                return _parse_provider_json_response(body, "OpenRouter")
 
         except urllib.error.HTTPError as e:
             body = e.read().decode("utf-8", errors="ignore")
@@ -562,7 +576,7 @@ def _ollama_chat_completions(model_name: str, messages: list[dict]) -> dict:
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             body = resp.read().decode("utf-8", errors="ignore")
-            return json.loads(body)
+            return _parse_provider_json_response(body, "Ollama")
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="ignore")
         _console.print(
@@ -604,7 +618,7 @@ def _ollama_cloud_chat_completions(model_name: str, messages: list[dict]) -> dic
     try:
         with urllib.request.urlopen(req, timeout=60) as resp:
             body = resp.read().decode("utf-8", errors="ignore")
-            return json.loads(body)
+            return _parse_provider_json_response(body, "Ollama Cloud")
     except urllib.error.HTTPError as e:
         body = e.read().decode("utf-8", errors="ignore")
         _console.print(

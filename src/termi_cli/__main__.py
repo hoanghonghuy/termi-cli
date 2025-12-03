@@ -2,29 +2,20 @@ import os
 import sys
 import io
 import contextlib
-import argparse
-import json
 import logging
 
 # Workaround tương thích Python 3.14: buộc protobuf dùng implementation Python thuần
 # thay vì extension C (_upb/_message), tránh lỗi "Metaclasses with custom tp_new".
 os.environ.setdefault("PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION", "python")
 
-from rich.markup import escape
 from rich.console import Console
 from rich.markdown import Markdown
+
 try:
     from PIL import Image
 except Exception:
     Image = None
 from dotenv import load_dotenv
-
-# Chuẩn hoá biến môi trường LANGUAGE càng sớm càng tốt để tránh lỗi
-lang_env = os.environ.get("LANGUAGE")
-if lang_env:
-    primary = lang_env.replace(" ", "").split(",")[0].split(":")[0]
-    if primary in ("vi", "en"):
-        os.environ["LANGUAGE"] = primary
 
 # --- Boilerplate để tắt log không cần thiết ---
 @contextlib.contextmanager
@@ -61,6 +52,7 @@ except (ImportError, AttributeError):
     pass
 # --- Kết thúc Boilerplate ---
 
+# ruff: noqa: E402 - các import bên dưới phụ thuộc vào phần bootstrap phía trên
 from termi_cli import api, utils, cli, memory, i18n
 from termi_cli.config import load_config, APP_DIR, CONFIG_PATH
 
@@ -250,9 +242,11 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
                 img = Image.open(image_path)
                 prompt_parts.append(img)
             except (FileNotFoundError, IsADirectoryError):
-                console.print(i18n.tr(language, "error_image_not_found", path=image_path)); return
+                console.print(i18n.tr(language, "error_image_not_found", path=image_path))
+                return
             except Exception as e:
-                console.print(i18n.tr(language, "error_opening_image", path=image_path, error=e)); return
+                console.print(i18n.tr(language, "error_opening_image", path=image_path, error=e))
+                return
         console.print(i18n.tr(language, "images_loaded_count", count=len(args.image)))
     
     if prompt_text:
@@ -382,9 +376,8 @@ def _handle_history_flow(console: Console, config: dict, language: str, args, cl
         if not selected_file:
             return None, True
         try:
-            with open(selected_file, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-                history = data.get("history", [])
+            data = history_handler.load_history_file(selected_file)
+            history = data.get("history", [])
             history_handler.print_formatted_history(console, history)
         except Exception as e:
             console.print(f"[bold red]Lỗi khi tải lịch sử: {e}[/bold red]")
@@ -402,8 +395,8 @@ def _handle_history_flow(console: Console, config: dict, language: str, args, cl
 
     if file_to_load and os.path.exists(file_to_load):
         try:
-            with open(file_to_load, 'r', encoding='utf-8') as f:
-                history = json.load(f).get("history", [])
+            data = history_handler.load_history_file(file_to_load)
+            history = data.get("history", [])
             console.print(i18n.tr(language, "history_loaded_from_file", path=file_to_load))
         except Exception as e:
             console.print(f"[bold red]Lỗi khi tải lịch sử: {e}[/bold red]")
@@ -461,7 +454,8 @@ def main(provided_args=None):
 
         # Khởi tạo config.json mặc định nếu chưa tồn tại (nhẹ nhàng hơn reset-config).
         if getattr(args, "init_config", False):
-            cfg = load_config()
+            load_config()
+
             console.print(
                 i18n.tr(
                     language,

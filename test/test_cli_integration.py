@@ -3,7 +3,6 @@ import sys
 import json
 import subprocess
 from pathlib import Path
-from io import StringIO
 from types import SimpleNamespace
 
 import pytest
@@ -12,14 +11,11 @@ try:
     from chromadb.config import Settings
 except Exception as e:  # pragma: no cover
     pytest.skip(f"chromadb is not available or misconfigured: {e}", allow_module_level=True)
-from rich.console import Console
 
 from termi_cli import cli as cli_module
 from termi_cli import __main__ as cli_entry
-from termi_cli import api
-from termi_cli.handlers import agent_handler, config_handler
+from termi_cli.handlers import agent_handler
 from termi_cli.utils import sanitize_filename
-from termi_cli.config import load_config
 
 
 def _run_cli(
@@ -334,6 +330,15 @@ def test_cli_agent_dry_run_flag_passed_to_agent(tmp_path, monkeypatch, mocker):
     def fake_run_master_agent(console, agent_args):  # noqa: ARG001
         captured["dry_run"] = getattr(agent_args, "agent_dry_run", False)
         captured["prompt"] = agent_args.prompt
+
+    mocker.patch.object(agent_handler, "run_master_agent", side_effect=fake_run_master_agent)
+
+    cli_entry.main(provided_args=args)
+
+    assert captured["dry_run"] is True
+    assert captured["prompt"] == "Inspect dry-run behaviour"
+
+
 def test_cli_agent_http_deepseek_uses_http_path_without_gemini(tmp_path, monkeypatch, mocker):
     """CLI --agent với HTTP agent DeepSeek + agent_allow_http=True phải dùng nhánh HTTP (generate_text)."""
 

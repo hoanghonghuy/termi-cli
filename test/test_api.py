@@ -199,7 +199,6 @@ def test_generate_text_routes_to_ollama_cloud(monkeypatch):
 
 def test_generate_text_routes_to_ollama(monkeypatch):
     """generate_text phải route đúng sang _ollama_chat_completions khi dùng ollama/* model."""
-
     captured = {}
 
     def fake_ollama_call(model_name, messages):  # type: ignore[override]
@@ -214,11 +213,20 @@ def test_generate_text_routes_to_ollama(monkeypatch):
     )
 
     assert text == "hi from ollama"
-    # Model name truyền sang Ollama phải loại bỏ prefix provider
+    # Model name truyền sang Ollama phải giữ nguyên
     assert captured["model_name"] == "qwen3:8b"
-
     assert captured["messages"][0] == {"role": "system", "content": "sys-instr"}
     assert captured["messages"][1] == {"role": "user", "content": "hello"}
+
+def test_parse_provider_json_response_handles_trailing_comma():
+    body = '{"choices": [],}'
+    parsed = api._parse_provider_json_response(body, "DemoProvider")
+    assert parsed == {"choices": []}
+
+def test_parse_provider_json_response_raises_on_invalid_json():
+    body = '{"choices": [invalid]'
+    with pytest.raises(RuntimeError):
+        api._parse_provider_json_response(body, "DemoProvider")
 
 def test_generate_text_http_uses_simple_cache(monkeypatch):
     if hasattr(api, "_http_response_cache"):

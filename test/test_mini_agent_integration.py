@@ -1,5 +1,3 @@
-from types import SimpleNamespace
-
 from termi_cli import cli as cli_module
 from termi_cli import __main__ as cli_entry
 

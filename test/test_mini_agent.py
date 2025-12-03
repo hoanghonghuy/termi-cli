@@ -1,5 +1,3 @@
-import pytest
-
 from termi_cli.handlers import mini_agent
 
 

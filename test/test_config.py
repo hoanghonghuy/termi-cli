@@ -1,5 +1,4 @@
 import json
-from pathlib import Path
 from rich.console import Console
 from termi_cli import config
 from termi_cli.handlers import config_handler
