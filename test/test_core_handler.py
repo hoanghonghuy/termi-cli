@@ -3,9 +3,13 @@ from types import SimpleNamespace
 import json
 
 import pytest
-from google.api_core.exceptions import ResourceExhausted, PermissionDenied, InvalidArgument
-
 from termi_cli.handlers import core_handler
+
+# Dùng trực tiếp các exception class từ core_handler để đảm bảo cùng một kiểu với
+# phần code handle_conversation_turn.
+ResourceExhausted = core_handler.ResourceExhausted
+PermissionDenied = core_handler.PermissionDenied
+InvalidArgument = core_handler.InvalidArgument
 
 
 def test_confirm_and_write_file_user_accepts(tmp_path, mocker):

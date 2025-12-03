@@ -5,7 +5,9 @@ Termi is a multi‑provider AI Agent Command-Line Interface (CLI) that supports 
 
 ## Quick installation
 
-- Requires **Python 3.8+**.
+- Requires **Python 3.10+**.
+- Gemini-based features (Agent, tool-calls, model discovery) are primarily tested on Python 3.10–3.12.
+- HTTP-only providers (DeepSeek, Groq, OpenRouter, Ollama) can still work on newer Python versions (e.g. 3.14) even when the Gemini SDK is unavailable.
 - Install dependencies:
 
 ```bash

@@ -122,6 +122,17 @@ termi --reset-config
 
 Interactive terminals ask for confirmation; non-interactive runs skip it.
 
+## Python version & Gemini compatibility
+
+- The project targets **Python 3.10+** (as specified in `pyproject.toml`).
+- Gemini-based features rely on `google-generativeai` and its transitive dependencies (such as `protobuf`). These libraries may lag behind the latest CPython releases.
+- On newer Python versions where the Gemini SDK cannot be imported cleanly (for example due to binary wheels not being available yet), Termi behaves as follows:
+  - HTTP-only providers (**DeepSeek**, **Groq**, **OpenRouter**, **Ollama local/Cloud**) continue to work via pure-HTTP code paths.
+  - Commands that strictly require Gemini (e.g. some Agent flows or model listing) print a clear error message suggesting you either:
+    - switch to an HTTP model, or
+    - run Termi on a supported Python version (for example 3.10–3.12) where Gemini is fully available.
+  - The test suite uses lightweight stubs so that Agent logic can still be tested even when the real Gemini SDK is not installed.
+
 ## Agent modes and tuning
 
 ### Modes
@@ -212,3 +223,79 @@ PLUGIN_TOOLS = {
 ```
 
 On startup, Termi imports these plugins and merges `PLUGIN_TOOLS` into its internal tool map. Import errors are ignored so a broken plugin does not prevent the CLI from starting.
+
+## HTTP mini-agent for local/HTTP models
+
+When your `default_model` is an HTTP provider (such as `deepseek-*`, `groq-*`, OpenRouter IDs, or `ollama/...`), Termi's single‑turn mode includes a lightweight **HTTP mini‑agent**.
+
+Before sending the prompt to the HTTP model, the mini‑agent:
+
+- Normalizes the prompt to lowercase.
+- Checks it against a list of **pattern rules** defined in `config.json` under the `mini_agent` key.
+- If a rule matches, it calls a local/tool function (e.g. `get_current_time`, `get_cli_uptime`, or `search_web`) and returns the result directly.
+- If no rule matches, it falls back to calling the HTTP model as usual.
+
+This is designed for very common questions where tools provide more accurate answers than the model alone (time, uptime, weather, FX/crypto prices, etc.).
+
+### Configuration: `mini_agent` in `config.json`
+
+The `mini_agent` configuration lives in the same `config.json` file as your models. Its structure looks like:
+
+- `enabled` (bool): turns the HTTP mini‑agent on or off.
+- `rules` (list): each rule has:
+  - `tool_name`: the name of a tool from `api.AVAILABLE_TOOLS` (e.g. `get_current_time`, `get_cli_uptime`, `search_web`).
+  - `patterns`: list of substrings; if any of them appears in the normalized prompt, the rule matches.
+  - `pass_prompt` (bool):
+    - `false`: the tool is called as `tool()`.
+    - `true`: the tool is called as `tool(prompt)` (used for `search_web` so the full question is preserved as the query).
+
+By default, Termi ships with rules for:
+
+- **Current time / date**: mapped to `get_current_time`.
+- **CLI uptime**: mapped to `get_cli_uptime`.
+- **Weather queries** (both Vietnamese and English patterns, including examples like `weather in HCMC tomorrow`): mapped to `search_web`.
+- **FX & crypto prices** (e.g. `tỷ giá usd`, `usd to vnd`, `btc price`, `eth price`): also mapped to `search_web`.
+
+You can customize or extend these rules by editing `mini_agent.rules` in your `config.json`:
+
+- Add new patterns (in Vietnamese or English).
+- Add new tools (for example, a custom `fx_tool` or `crypto_tool` defined via the plugin system) by setting `tool_name` to the new tool's name and listing the patterns you want it to handle.
+- Disable the mini‑agent entirely by setting `"enabled": false`.
+
+The same `mini_agent` configuration is also summarized by the `termi --diagnostics` command, which prints whether the mini-agent is enabled, how many rules are loaded, and which tools are referenced.
+
+## Ollama local vs. Ollama Cloud
+
+Termi nhận diện hai dạng model Ollama:
+
+1. **Local daemon (prefix `ollama/...`)** – ví dụ `ollama/qwen3:8b`.
+   - Gọi qua OpenAI-compatible endpoint `http://localhost:11434/v1/chat/completions`.
+   - Có thể đổi host bằng biến môi trường `OLLAMA_BASE_URL`.
+   - Không cần API key.
+
+2. **Ollama Cloud (prefix `ollama-cloud/...`)** – ví dụ `ollama-cloud/qwen3-coder:480b-cloud`.
+   - Gọi REST API `https://ollama.com/api/chat` (có thể override bằng `OLLAMA_CLOUD_BASE_URL`).
+   - Cần thiết lập `OLLAMA_API_KEY` (tạo tại [https://ollama.com/settings/keys](https://ollama.com/settings/keys)).
+   - Tương thích với cùng cú pháp prompt như local daemon.
+
+### Cấu hình
+
+Trong `config.json`, bạn có thể đặt `default_model`, `code_model`, `commit_model`… thành `ollama/<tag>` (local) hoặc `ollama-cloud/<tag>` (cloud). Ví dụ:
+
+```json
+{
+  "default_model": "ollama-cloud/qwen3-coder:480b-cloud",
+  "code_model": "ollama/qwen3:8b"
+}
+```
+
+### Diagnostics & mini-agent
+
+`termi --diagnostics` sẽ hiển thị rõ provider "⚫ Ollama" (local) hoặc "⚫☁️ Ollama Cloud" và liệt kê các cảnh báo mini-agent (nếu rule/tool không hợp lệ).
+
+### Khi nào dùng Cloud?
+
+- Bạn muốn chạy những model lớn (như `qwen3-coder:480b-cloud`) mà máy local không đủ tài nguyên.
+- Cần sẵn sàng ngay không phải tự pull model.
+
+Nhược điểm: cần internet và phụ thuộc quota tài khoản Ollama Cloud.
