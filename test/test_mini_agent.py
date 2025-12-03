@@ -71,3 +71,62 @@ def test_run_http_mini_agent_returns_none_when_no_rule_matches(mocker):
 
     assert result is None
     dummy_tool.assert_not_called()
+
+
+def test_run_http_mini_agent_uses_highest_priority_rule_when_multiple_match(mocker):
+    config = {
+        "mini_agent": {
+            "enabled": True,
+            "rules": [
+                {
+                    "tool_name": "low_priority_tool",
+                    "patterns": ["hello"],
+                    "pass_prompt": False,
+                    "priority": 1,
+                },
+                {
+                    "tool_name": "high_priority_tool",
+                    "patterns": ["hello"],
+                    "pass_prompt": False,
+                    "priority": 10,
+                },
+            ],
+        }
+    }
+
+    low_tool = mocker.Mock(return_value="LOW")
+    high_tool = mocker.Mock(return_value="HIGH")
+    mocker.patch.object(
+        mini_agent.api,
+        "AVAILABLE_TOOLS",
+        {"low_priority_tool": low_tool, "high_priority_tool": high_tool},
+    )
+
+    result = mini_agent.run_http_mini_agent("hello there", "hello there", config)
+
+    assert result == "HIGH"
+    high_tool.assert_called_once_with()
+    low_tool.assert_not_called()
+
+
+def test_validate_mini_agent_rules_reports_invalid_priority(mocker):
+    config = {
+        "mini_agent": {
+            "enabled": True,
+            "rules": [
+                {
+                    "tool_name": "dummy_tool",
+                    "patterns": ["hello"],
+                    "pass_prompt": False,
+                    "priority": "high",  # invalid
+                }
+            ],
+        }
+    }
+
+    dummy_tool = mocker.Mock(return_value="OK")
+    mocker.patch.object(mini_agent.api, "AVAILABLE_TOOLS", {"dummy_tool": dummy_tool})
+
+    issues = mini_agent.validate_mini_agent_rules(config)
+
+    assert any("priority không hợp lệ" in msg for msg in issues)

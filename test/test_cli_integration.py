@@ -255,6 +255,32 @@ def test_cli_rename_history_by_topic(tmp_path):
     assert data.get("title") == new_title
 
 
+def test_cli_history_shows_saved_conversation(tmp_path):
+    home = tmp_path / "home"
+    hist_dir = home / "chat_logs"
+    hist_dir.mkdir(parents=True)
+
+    payload = {
+        "title": "Demo history",
+        "history": [
+            {"role": "user", "parts": [{"text": "Hello from history"}]},
+            {"role": "model", "parts": [{"text": "Hi there"}]},
+        ],
+    }
+    hist_path = hist_dir / "chat_demo.json"
+    hist_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+
+    result = _run_cli(
+        tmp_path,
+        ["--history"],
+        {"TERMI_CLI_HOME": home},
+        stdin_text="1\n",
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Hello from history" in result.stdout
+
+
 def test_cli_agent_max_steps_passed_to_agent(tmp_path, monkeypatch, mocker):
     """--agent-max-steps phải được truyền xuống args của Agent."""
     home = tmp_path / "home"

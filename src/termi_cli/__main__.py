@@ -272,11 +272,13 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
 
         try:
             # Mini-agent pattern-based được tách riêng ra handler để dễ test & mở rộng.
-            response_text = mini_agent.run_http_mini_agent(
-                prompt_text=prompt_text,
-                user_intent=user_intent,
-                config=config,
-            )
+            response_text = None
+            if not getattr(args, "mini_agent_off", False):
+                response_text = mini_agent.run_http_mini_agent(
+                    prompt_text=prompt_text,
+                    user_intent=user_intent,
+                    config=config,
+                )
 
             if not response_text:
                 response_text = api.generate_text(
@@ -373,6 +375,20 @@ def _handle_history_flow(console: Console, config: dict, language: str, args, cl
     - should_exit: True nếu đã hoàn thành tác vụ history và không cần tiếp tục main flow.
     """
     history = None
+
+    if getattr(args, "history", False):
+        filter_query = getattr(args, "history_filter", None)
+        selected_file = history_handler.show_history_browser(console, filter_query)
+        if not selected_file:
+            return None, True
+        try:
+            with open(selected_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+                history = data.get("history", [])
+            history_handler.print_formatted_history(console, history)
+        except Exception as e:
+            console.print(f"[bold red]Lỗi khi tải lịch sử: {e}[/bold red]")
+        return None, True
 
     # Tải history từ --load hoặc --topic nếu có
     file_to_load = None

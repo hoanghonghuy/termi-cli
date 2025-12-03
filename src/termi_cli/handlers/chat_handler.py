@@ -177,11 +177,14 @@ def run_chat_mode_deepseek(console: Console, config: dict, args: argparse.Namesp
 
             dialogue.append(("user", prompt))
 
-            mini_agent_response = mini_agent.run_http_mini_agent(
-                prompt_text=prompt,
-                user_intent=prompt,
-                config=config,
-            )
+            mini_agent_response = None
+            if not getattr(args, "mini_agent_off", False):
+                mini_agent_response = mini_agent.run_http_mini_agent(
+                    prompt_text=prompt,
+                    user_intent=prompt,
+                    config=config,
+                )
+
             if mini_agent_response:
                 console.print(mini_agent_response)
                 dialogue.append(("assistant", mini_agent_response))

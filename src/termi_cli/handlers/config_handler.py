@@ -669,3 +669,9 @@ def show_diagnostics(console: Console, config: dict):
         console.print(warning_prefix)
         for msg in issues:
             console.print(f"[yellow]- {msg}[/yellow]")
+
+    # Gợi ý nhỏ về flag CLI để tạm thởi tắt mini-agent trong từng lần chạy
+    if language == "vi":
+        console.print("[dim]Mẹo: dùng cờ --mini-agent-off để tạm thởi tắt mini-agent HTTP cho phiên này (không sửa config.json).[/dim]")
+    else:
+        console.print("[dim]Hint: use --mini-agent-off to temporarily disable the HTTP mini-agent for this run (without changing config.json).[/dim]")

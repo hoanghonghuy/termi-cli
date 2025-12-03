@@ -100,3 +100,58 @@ def test_single_turn_http_with_ollama_cloud_routes_generate_text(tmp_path, monke
 
     assert captured["model_name"] == "ollama-cloud/qwen3-coder:480b-cloud"
     assert captured["prompt"] == "Tell me something"
+
+
+def test_single_turn_http_respects_mini_agent_off_flag(tmp_path, monkeypatch, mocker):
+    """Single-turn HTTP với --mini-agent-off phải bỏ qua mini-agent và gọi generate_text trực tiếp."""
+
+    home = tmp_path / "home"
+    home.mkdir()
+    monkeypatch.setenv("TERMI_CLI_HOME", str(home))
+
+    config = {
+        "language": "vi",
+        "default_model": "deepseek-chat",
+        "code_model": "deepseek-chat",
+        "commit_model": "deepseek-chat",
+        "agent_model": "models/gemini-pro-latest",
+        "mini_agent": {
+            "enabled": True,
+            "rules": [],
+        },
+    }
+
+    mocker.patch.object(cli_entry, "load_config", return_value=config)
+    mocker.patch.object(cli_entry.api, "GEMINI_AVAILABLE", True)
+    mocker.patch.object(cli_entry, "genai", None)
+
+    class DummyStdin:
+        def isatty(self):  # pragma: no cover - trivial shim
+            return True
+
+    monkeypatch.setattr(cli_entry.sys, "stdin", DummyStdin(), raising=False)
+
+    # Mini-agent không được phép được gọi khi bật --mini-agent-off
+    mini_agent_mock = mocker.patch.object(
+        cli_entry.mini_agent,
+        "run_http_mini_agent",
+        side_effect=AssertionError("mini-agent should not be called when --mini-agent-off is set"),
+    )
+
+    captured = {}
+
+    def fake_generate_text(model_name, prompt, system_instruction=None):  # noqa: ARG001
+        captured["model_name"] = model_name
+        captured["prompt"] = prompt
+        return "OK"
+
+    mocker.patch.object(cli_entry.api, "generate_text", side_effect=fake_generate_text)
+
+    parser = cli_module.create_parser()
+    args = parser.parse_args(["--mini-agent-off", "Weather in HCMC tomorrow"])
+
+    cli_entry.main(provided_args=args)
+
+    mini_agent_mock.assert_not_called()
+    assert captured["model_name"] == "deepseek-chat"
+    assert captured["prompt"] == "Weather in HCMC tomorrow"

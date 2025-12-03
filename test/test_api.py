@@ -219,3 +219,22 @@ def test_generate_text_routes_to_ollama(monkeypatch):
 
     assert captured["messages"][0] == {"role": "system", "content": "sys-instr"}
     assert captured["messages"][1] == {"role": "user", "content": "hello"}
+
+def test_generate_text_http_uses_simple_cache(monkeypatch):
+    if hasattr(api, "_http_response_cache"):
+        api._http_response_cache.clear()
+
+    call_count = {"n": 0}
+
+    def fake_groq_call(model_name, messages):  # type: ignore[override]
+        call_count["n"] += 1
+        return {"choices": [{"message": {"content": f"hi {call_count['n']}"}}]}
+
+    monkeypatch.setattr(api, "_resilient_groq_api_call", fake_groq_call, raising=True)
+
+    text1 = api.generate_text("groq-llama-3.1-70b", "hello", system_instruction="sys-instr")
+    text2 = api.generate_text("groq-llama-3.1-70b", "hello", system_instruction="sys-instr")
+
+    assert text1 == "hi 1"
+    assert text2 == "hi 1"
+    assert call_count["n"] == 1

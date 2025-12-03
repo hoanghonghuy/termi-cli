@@ -95,6 +95,13 @@ def create_parser():
         ),
     )
     model_group.add_argument(
+        "--mini-agent-off",
+        action="store_true",
+        help=(
+            "Tạm thởi tắt mini-agent HTTP cho phiên này (không thay đổi config.json)."
+        ),
+    )
+    model_group.add_argument(
         "--init-config",
         "--init",
         dest="init_config",
@@ -167,6 +174,12 @@ def create_parser():
         nargs=2,
         metavar=("OLD", "NEW"),
         help="Đổi tên lịch sử chat theo đường dẫn file hoặc topic (non-interactive).",
+    )
+    history_group.add_argument(
+        "--history-filter",
+        type=str,
+        metavar="QUERY",
+        help="Lọc danh sách lịch sử khi hiển thị với --history theo từ khoá trong tiêu đề.",
     )
 
     # --- Trí nhớ dài hạn ---

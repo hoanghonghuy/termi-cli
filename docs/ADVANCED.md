@@ -152,6 +152,14 @@ To add a new HTTP provider, you typically:
 2. Implement a `MyCloudProvider(BaseProvider)` that calls your HTTP API and returns the final text.
 3. Register it in `_PROVIDER_REGISTRY["mycloud"]`.
 
+### HTTP metrics & diagnostics
+
+- `api.generate_text` duy trì một bộ đếm nhẹ `_HTTP_METRICS` cho các provider HTTP:
+  - `http_calls_total`: số lần gọi HTTP thực sự sau khi miss cache.
+  - `http_calls_by_provider`: phân rã theo `deepseek`, `groq`, `openrouter`, `ollama`, `ollama_cloud`.
+  - `http_cache_hits_total`: số lần cache trả về kết quả, tránh phải gọi HTTP.
+- Các số liệu này có thể truy vấn qua `api.get_http_metrics()` (dùng trong diagnostics hoặc tooling nội bộ) và được log ở mức DEBUG, giúp theo dõi hiệu quả cache cũng như tần suất gọi từng provider mà không ảnh hưởng tới API công khai.
+
 ## Agent modes and tuning
 
 ### Modes

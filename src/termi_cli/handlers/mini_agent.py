@@ -43,6 +43,7 @@ def validate_mini_agent_rules(config: dict) -> list[str]:
 
         tool_name = rule.get("tool_name")
         patterns = rule.get("patterns")
+        priority = rule.get("priority")
 
         if not tool_name or not isinstance(tool_name, str):
             issues.append(f"Rule #{idx} thiếu tool_name hợp lệ")
@@ -52,16 +53,19 @@ def validate_mini_agent_rules(config: dict) -> list[str]:
         if not isinstance(patterns, list) or not all(isinstance(p, str) and p.strip() for p in patterns):
             issues.append(f"Rule #{idx} có patterns không hợp lệ")
 
+        if priority is not None and not isinstance(priority, (int, float)):
+            issues.append(f"Rule #{idx} có priority không hợp lệ (phải là số)")
+
     return issues
 
 
-def run_http_mini_agent(prompt_text: str, user_intent: str, config: dict) -> Optional[str]:
-    """Thử áp dụng mini-agent cho một prompt single-turn HTTP.
+def _get_enabled_mini_agent_cfg(config: dict) -> dict | None:
+    """Trả về mini_agent config đã bật nếu hợp lệ, ngược lại trả về None.
 
-    - Nếu khớp một rule trong config["mini_agent"]["rules"]:
-      * Gọi tool tương ứng và trả về kết quả (string).
-    - Nếu không khớp rule nào hoặc cấu hình bị tắt: trả về None để caller fallback.
+    Hàm này chỉ được dùng nội bộ cho runtime (không sinh cảnh báo),
+    còn validate_mini_agent_rules vẫn chịu trách nhiệm báo lỗi chi tiết.
     """
+
     if not isinstance(config, dict):
         return None
 
@@ -72,13 +76,39 @@ def run_http_mini_agent(prompt_text: str, user_intent: str, config: dict) -> Opt
     if not mini_agent_cfg.get("enabled", True):
         return None
 
+    return mini_agent_cfg
+
+
+def run_http_mini_agent(prompt_text: str, user_intent: str, config: dict) -> Optional[str]:
+    """Thử áp dụng mini-agent cho một prompt single-turn HTTP.
+
+    - Nếu khớp một rule trong config["mini_agent"]["rules"]:
+      * Gọi tool tương ứng và trả về kết quả (string).
+    - Nếu không khớp rule nào hoặc cấu hình bị tắt: trả về None để caller fallback.
+    """
+
+    mini_agent_cfg = _get_enabled_mini_agent_cfg(config)
+    if mini_agent_cfg is None:
+        return None
+
     normalized_prompt = (prompt_text or "").lower()
 
-    for rule in mini_agent_cfg.get("rules", []):
-        # Mỗi rule: {"tool_name": str, "patterns": [str], "pass_prompt": bool}
+    raw_rules = mini_agent_cfg.get("rules", [])
+    ordered_rules = []
+    for rule in raw_rules:
         if not isinstance(rule, dict):
             continue
+        prio = rule.get("priority")
+        if isinstance(prio, (int, float)):
+            priority_value = prio
+        else:
+            priority_value = 0
+        ordered_rules.append((priority_value, rule))
 
+    ordered_rules.sort(key=lambda item: item[0], reverse=True)
+
+    for _, rule in ordered_rules:
+        # Mỗi rule: {"tool_name": str, "patterns": [str], "pass_prompt": bool, "priority": number}
         tool_name = rule.get("tool_name")
         patterns = rule.get("patterns") or []
         pass_prompt = bool(rule.get("pass_prompt", False))

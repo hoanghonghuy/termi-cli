@@ -66,7 +66,7 @@ def serialize_history(history):
     return serializable
 
 
-def show_history_browser(console: Console):
+def show_history_browser(console: Console, filter_query: str | None = None):
     language = load_config().get("language", "vi")
     console.print(
         i18n.tr(language, "history_scanning_files", dir=HISTORY_DIR)
@@ -104,6 +104,18 @@ def show_history_browser(console: Console):
         except Exception:
             continue
     history_metadata.sort(key=lambda x: x["last_modified"], reverse=True)
+
+    if filter_query:
+        q = filter_query.lower()
+        history_metadata = [
+            meta
+            for meta in history_metadata
+            if q in str(meta.get("title", "")).lower()
+        ]
+        if not history_metadata:
+            console.print(i18n.tr(language, "no_history_files_found"))
+            return None
+
     table = Table(title=i18n.tr(language, "history_table_title"))
     table.add_column(i18n.tr(language, "history_table_column_index"), style="cyan")
     table.add_column(i18n.tr(language, "history_table_column_title"), style="magenta")

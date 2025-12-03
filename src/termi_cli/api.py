@@ -703,6 +703,58 @@ class OllamaCloudProvider(BaseProvider):
             return json.dumps(response, ensure_ascii=False)
 
 
+_HTTP_CACHE_MAX_ENTRIES = 128
+_http_response_cache: dict[tuple[str, str, str | None, str], str] = {}
+
+# Metrics đơn giản cho HTTP providers, dùng cho diagnostics & logging nội bộ.
+_HTTP_METRICS: dict[str, object] = {
+    "http_calls_total": 0,
+    "http_cache_hits_total": 0,
+    "http_calls_by_provider": {},  # type: ignore[dict-item]
+}
+
+
+def _http_cache_get(provider_kind: str, model_name: str, prompt: str, system_instruction: str | None) -> str | None:
+    key = (provider_kind, model_name, system_instruction, prompt)
+    return _http_response_cache.get(key)
+
+
+def _http_cache_set(provider_kind: str, model_name: str, prompt: str, system_instruction: str | None, value: str) -> None:
+    if len(_http_response_cache) >= _HTTP_CACHE_MAX_ENTRIES:
+        try:
+            _http_response_cache.pop(next(iter(_http_response_cache)))
+        except StopIteration:
+            pass
+    key = (provider_kind, model_name, system_instruction, prompt)
+    _http_response_cache[key] = value
+
+
+def _http_metrics_record_call(provider_kind: str) -> None:
+    _HTTP_METRICS["http_calls_total"] = int(_HTTP_METRICS.get("http_calls_total", 0)) + 1
+    by_provider = _HTTP_METRICS.get("http_calls_by_provider") or {}
+    if not isinstance(by_provider, dict):
+        by_provider = {}
+    by_provider[provider_kind] = int(by_provider.get(provider_kind, 0)) + 1
+    _HTTP_METRICS["http_calls_by_provider"] = by_provider
+
+
+def _http_metrics_record_cache_hit() -> None:
+    _HTTP_METRICS["http_cache_hits_total"] = int(_HTTP_METRICS.get("http_cache_hits_total", 0)) + 1
+
+
+def get_http_metrics() -> dict:
+    """Trả về snapshot metrics HTTP providers để phục vụ diagnostics.
+
+    Giá trị được tính từ lúc process khởi động, chỉ dùng để debug/quan sát.
+    """
+
+    return {
+        "http_calls_total": int(_HTTP_METRICS.get("http_calls_total", 0)),
+        "http_cache_hits_total": int(_HTTP_METRICS.get("http_cache_hits_total", 0)),
+        "http_calls_by_provider": dict(_HTTP_METRICS.get("http_calls_by_provider") or {}),
+    }
+
+
 _PROVIDER_REGISTRY: dict[str, BaseProvider] = {
     "deepseek": DeepseekProvider(),
     "groq": GroqProvider(),
@@ -735,10 +787,21 @@ def generate_text(model_name: str, prompt: str, system_instruction: str | None =
     provider_kind = _detect_provider_kind(model_name)
 
     if provider_kind != "gemini":
+        cached = _http_cache_get(provider_kind, model_name, prompt, system_instruction)
+        if cached is not None:
+            logger.debug("HTTP generate_text cache hit (provider=%s, model=%s)", provider_kind, model_name)
+            _http_metrics_record_cache_hit()
+            return cached
+
         provider = _PROVIDER_REGISTRY.get(provider_kind)
         if provider is None:
             raise RuntimeError(f"Unknown provider kind: {provider_kind}")
-        return provider.generate(model_name, prompt, system_instruction)
+
+        logger.debug("HTTP generate_text call (provider=%s, model=%s)", provider_kind, model_name)
+        result = provider.generate(model_name, prompt, system_instruction)
+        _http_cache_set(provider_kind, model_name, prompt, system_instruction, result)
+        _http_metrics_record_call(provider_kind)
+        return result
 
     if not GEMINI_AVAILABLE:
         _console.print(
