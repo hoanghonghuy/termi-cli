@@ -48,9 +48,11 @@ Use `termi --help` to see all available flags and commands.
 - **DeepSeek**: models starting with `deepseek-*` – HTTP OpenAI‑compatible endpoints.
 - **Groq**: models starting with `groq-*` – HTTP OpenAI‑compatible endpoints (with aliases such as `groq-chat`).
 - **OpenRouter**: OpenAI‑compatible HTTP models referenced by IDs like `openai/gpt-4o-mini`.
-- **Ollama (local)**: models referenced like `ollama/qwen3:8b` – run completely on your machine via Ollama's OpenAI‑compatible API.
+- **Ollama (local)**: models referenced like `ollama/qwen3:8b` – run completely on your machine via Ollama's OpenAI-compatible API.
 
 When an HTTP provider (DeepSeek/Groq/OpenRouter) reports **Insufficient Balance**, Termi automatically falls back to a safe Gemini model with a clear notice, including during the Agent's initial plan analysis phase.
+
+> **JSON hardening:** tất cả response từ các provider HTTP đều được parse thông qua helper `parse_json_payload`, tự động loại bỏ dấu phẩy thừa trước khi đóng `}`/`]`. Điều này giúp CLI kiên cố hơn khi gặp lỗi định dạng JSON từ API bên ngoài.
 
 ## Configuration & data directory
 
@@ -91,3 +93,5 @@ We welcome all contributions to improve this CLI Agent. In short:
    ```
 3. **Commit** your changes with clear and descriptive messages.
 4. **Open a Pull Request** to the main repository.
+
+Trước khi mở PR, hãy chạy `python -m ruff check` (hoặc tối thiểu `python -m ruff check src test tests`) để đảm bảo mã nguồn sạch lint theo cấu hình hiện tại.

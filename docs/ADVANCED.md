@@ -20,6 +20,7 @@ This document describes the advanced features that are only briefly mentioned in
 
 - `--git-commit-short`  
   Generate a short, single-line Conventional Commit subject based on staged changes and propose a `git commit -m` command.
+- **Lint reminder:** khi phát triển các tiện ích mới, luôn chạy `python -m ruff check src test tests` (hoặc ít nhất các thư mục liên quan) trước khi mở PR để đảm bảo phong cách thống nhất.
 
 - `--list-tools`  
   List all available tools (core + plugin) that the Agent can call.
@@ -145,6 +146,7 @@ Termi routes all single-turn text generation through `api.generate_text(model_na
     such as `_resilient_deepseek_api_call`, `_resilient_groq_api_call`, `_resilient_openrouter_api_call`, `_ollama_chat_completions`, and `_ollama_cloud_chat_completions`.
   - A simple registry `_PROVIDER_REGISTRY: dict[str, BaseProvider]` maps provider kinds to their instances.
 - `generate_text` calls the appropriate `BaseProvider.generate(...)` for HTTP providers, and keeps the original Gemini SDK path for `provider_kind == "gemini"`.
+- **JSON hardening:** mọi response HTTP đều đi qua helper `parse_json_payload`, helper này sanitize dấu phẩy thừa trước `}`/`]` rồi mới `json.loads`, giúp tránh crash khi provider trả JSON sai chuẩn.
 
 To add a new HTTP provider, you typically:
 

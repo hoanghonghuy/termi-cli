@@ -3,6 +3,8 @@ Module xử lý các tác vụ liên quan đến cấu hình của ứng dụng,
 bao gồm quản lý persona, custom instructions và lựa chọn model.
 """
 
+import subprocess
+
 from rich.console import Console
 from rich.table import Table
 
@@ -159,6 +161,73 @@ def model_selection_wizard(console: Console, config: dict):
                     console.print(i18n.tr(language, "config_selection_cancelled"))
                     return None
 
+        def _get_ollama_local_models() -> list[dict]:
+            """Lấy danh sách model Ollama local bằng cách parse output của `ollama list`.
+
+            Output mẫu:
+                NAME                       ID              SIZE      MODIFIED
+                deepseek-r1:1.5b           e0979632db5a    1.1 GB    2 minutes ago
+                qwen3:8b                   500a1f067a9f    5.2 GB    31 hours ago
+                qwen3-coder:480b-cloud     e30e45586389    -         31 hours ago
+            """
+            try:
+                result = subprocess.run(
+                    ["ollama", "list"],
+                    capture_output=True,
+                    text=True,
+                    timeout=10,
+                )
+                if result.returncode != 0:
+                    return []
+            except (FileNotFoundError, subprocess.SubprocessError, subprocess.TimeoutExpired):
+                return []
+
+            models: list[dict] = []
+            lines = result.stdout.strip().splitlines()
+
+            for line in lines:
+                line = line.strip()
+                if not line:
+                    continue
+                # Bỏ qua dòng header
+                if line.upper().startswith("NAME"):
+                    continue
+
+                tokens = line.split()
+                if len(tokens) < 3:
+                    continue
+
+                name = tokens[0]
+                # tokens[1] là ID, bỏ qua
+
+                # Parse size: có thể là "1.1 GB", "986 MB", hoặc "-" (cloud model)
+                size_mb = 0.0
+                if tokens[2] == "-":
+                    size_mb = 0.0
+                elif len(tokens) >= 4:
+                    try:
+                        size_val = float(tokens[2])
+                        size_unit = tokens[3].upper()
+                        if size_unit == "GB":
+                            size_mb = size_val * 1024
+                        elif size_unit == "MB":
+                            size_mb = size_val
+                        elif size_unit == "KB":
+                            size_mb = size_val / 1024
+                    except ValueError:
+                        size_mb = 0.0
+
+                models.append({"name": name, "size_mb": size_mb})
+
+            # Loại bỏ duplicate (nếu có)
+            unique_models: list[dict] = []
+            seen: set[str] = set()
+            for item in models:
+                if item["name"] not in seen:
+                    unique_models.append(item)
+                    seen.add(item["name"])
+            return unique_models
+
         variant_raw = console.input(i18n.tr(language, "config_ollama_variant_prompt"), markup=False).strip()
         variant = 2 if variant_raw == "2" else 1
 
@@ -166,7 +235,43 @@ def model_selection_wizard(console: Console, config: dict):
             console.print(i18n.tr(language, "config_ollama_cloud_api_hint"))
             default_model = _ask_ollama_model("config_ollama_cloud_model_prompt", "ollama-cloud/")
         else:
-            default_model = _ask_ollama_model("config_ollama_default_model_prompt", "ollama/")
+            local_models = _get_ollama_local_models()
+            if local_models:
+                table = Table(title=i18n.tr(language, "config_model_selection_title"))
+                table.add_column("#", style="cyan")
+                table.add_column("Model tag", style="magenta")
+                table.add_column("Size (MB)", style="green")
+                for idx, item in enumerate(local_models, start=1):
+                    size_display = f"{item['size_mb']:.1f}" if item["size_mb"] else "-"
+                    table.add_row(str(idx), item["name"], size_display)
+                console.print(table)
+
+                while True:
+                    try:
+                        prompt = i18n.tr(language, "config_ollama_local_select_prompt")
+                        choice_str = console.input(prompt, markup=False).strip()
+                        if not choice_str:
+                            console.print(i18n.tr(language, "config_selection_cancelled"))
+                            return None
+                        if choice_str.isdigit():
+                            idx = int(choice_str) - 1
+                            if 0 <= idx < len(local_models):
+                                selected = local_models[idx]["name"]
+                                default_model = f"ollama/{selected}"
+                                break
+                            console.print(i18n.tr(language, "config_invalid_choice"))
+                            continue
+                        selected = choice_str
+                        if not selected.startswith("ollama/"):
+                            selected = f"ollama/{selected}"
+                        default_model = selected
+                        break
+                    except (KeyboardInterrupt, EOFError):
+                        console.print(i18n.tr(language, "config_selection_cancelled"))
+                        return None
+            else:
+                console.print(i18n.tr(language, "config_ollama_local_no_models"))
+                default_model = _ask_ollama_model("config_ollama_default_model_prompt", "ollama/")
 
         if default_model is None:
             return
