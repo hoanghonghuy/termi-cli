@@ -193,7 +193,12 @@ def build_executor_instruction() -> str:
 
     tool_definitions = ""
     for func in api.AVAILABLE_TOOLS.values():
-        tool_definitions += f"- `{func.__name__}`: {func.__doc__.strip().splitlines()[0]}\n"
+        doc = func.__doc__
+        if isinstance(doc, str):
+            first_line = doc.strip().splitlines()[0] if doc.strip() else ""
+        else:
+            first_line = ""
+        tool_definitions += f"- `{func.__name__}`: {first_line}\n"
 
     use_qwen_style = False
     try:

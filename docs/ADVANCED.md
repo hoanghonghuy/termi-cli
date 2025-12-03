@@ -122,6 +122,17 @@ termi --reset-config
 
 Interactive terminals ask for confirmation; non-interactive runs skip it.
 
+## Python version & Gemini compatibility
+
+- The project targets **Python 3.10+** (as specified in `pyproject.toml`).
+- Gemini-based features rely on `google-generativeai` and its transitive dependencies (such as `protobuf`). These libraries may lag behind the latest CPython releases.
+- On newer Python versions where the Gemini SDK cannot be imported cleanly (for example due to binary wheels not being available yet), Termi behaves as follows:
+  - HTTP-only providers (**DeepSeek**, **Groq**, **OpenRouter**, **Ollama local/Cloud**) continue to work via pure-HTTP code paths.
+  - Commands that strictly require Gemini (e.g. some Agent flows or model listing) print a clear error message suggesting you either:
+    - switch to an HTTP model, or
+    - run Termi on a supported Python version (for example 3.10–3.12) where Gemini is fully available.
+  - The test suite uses lightweight stubs so that Agent logic can still be tested even when the real Gemini SDK is not installed.
+
 ## Agent modes and tuning
 
 ### Modes

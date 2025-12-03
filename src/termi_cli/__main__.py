@@ -443,6 +443,18 @@ def main(provided_args=None):
                 if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
                     handler.setLevel(logging.ERROR)
 
+        # Khởi tạo config.json mặc định nếu chưa tồn tại (nhẹ nhàng hơn reset-config).
+        if getattr(args, "init_config", False):
+            cfg = load_config()
+            console.print(
+                i18n.tr(
+                    language,
+                    "config_init_success",
+                    path=str(CONFIG_PATH),
+                )
+            )
+            return
+
         # Cho phép reset toàn bộ config về mặc định (xoá file config.json hiện tại)
         if getattr(args, "reset_config", False):
             # Debug thêm khi chạy dưới pytest để kiểm tra đường dẫn
@@ -501,6 +513,22 @@ def main(provided_args=None):
                 console.print(i18n.tr(language, "memory_reset_success"))
             else:
                 console.print(i18n.tr(language, "memory_reset_error"))
+            return
+
+        # Lệnh doctor: kiểm tra môi trường (Python, Gemini, API keys) + diagnostics cấu hình.
+        if getattr(args, "doctor", False):
+            console.print(f"[bold]Termi Doctor[/bold] - Python: {sys.version.splitlines()[0]}")
+
+            if getattr(api, "GEMINI_AVAILABLE", True):
+                console.print("[green]Gemini SDK: available in this environment.[/green]")
+            else:
+                console.print(
+                    "[yellow]Gemini SDK: unavailable in this Python environment. "
+                    "Bạn vẫn có thể dùng các provider HTTP (DeepSeek/Groq/OpenRouter/Ollama), "
+                    "hoặc chạy Termi trên Python 3.10–3.12 để dùng Gemini đầy đủ.[/yellow]"
+                )
+
+            config_handler.show_diagnostics(console, config)
             return
 
         # Lệnh chẩn đoán cấu hình không cần API key

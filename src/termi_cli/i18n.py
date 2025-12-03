@@ -21,6 +21,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "config_reset_error": "[red]Không thể reset config: {error}[/red]",
         "config_reset_confirm": "Bạn có chắc muốn xóa config hiện tại và khôi phục mặc định? (y/n): ",
         "config_reset_cancelled": "[yellow]Đã hủy thao tác reset config.[/yellow]",
+        "config_init_success": "[green]Đã khởi tạo (hoặc tải) config tại '{path}'.[/green]",
 
         # __main__.py & history_handler.py
         "api_keys_loaded": "[dim]\U0001f511 Đã tải {count} API key(s)[/dim]",
@@ -256,6 +257,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "config_reset_error": "[red]Could not reset config: {error}[/red]",
         "config_reset_confirm": "Are you sure you want to delete the current config and restore defaults? (y/n): ",
         "config_reset_cancelled": "[yellow]Cancelled config reset.[/yellow]",
+        "config_init_success": "[green]Initialized (or loaded) config at '{path}'.[/green]",
 
         # __main__.py & history_handler.py
         "api_keys_loaded": "[dim]Loaded {count} API key(s)[/dim]",

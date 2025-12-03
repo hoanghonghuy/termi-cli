@@ -85,6 +85,18 @@ def test_cli_diagnostics_runs_without_api_keys(tmp_path):
     )
 
 
+def test_cli_doctor_runs_without_api_keys(tmp_path):
+    """--doctor phải chạy được mà không cần API key và in header Doctor."""
+
+    home = tmp_path / "home"
+    home.mkdir()
+
+    result = _run_cli(tmp_path, ["--doctor"], {"TERMI_CLI_HOME": home})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "Termi Doctor" in result.stdout
+
+
 def test_cli_reset_memory_uses_isolated_app_dir(tmp_path):
     """--reset-memory phải xoá đúng APP_DIR/memory_db dựa trên TERMI_CLI_HOME."""
     home = tmp_path / "home"
@@ -112,6 +124,24 @@ def test_cli_reset_config_restores_defaults_in_isolated_home(tmp_path):
     config_path.write_text(json.dumps(custom_config, ensure_ascii=False), encoding="utf-8")
 
     result = _run_cli(tmp_path, ["--reset-config"], {"TERMI_CLI_HOME": home})
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert config_path.exists()
+
+    config_data = json.loads(config_path.read_text(encoding="utf-8"))
+    assert config_data.get("default_model") == "models/gemini-flash-latest"
+
+
+def test_cli_init_config_creates_config_with_defaults(tmp_path):
+    """--init-config phải tạo config.json mặc định nếu chưa tồn tại."""
+
+    home = tmp_path / "home"
+    home.mkdir()
+
+    config_path = home / "config.json"
+    assert not config_path.exists()
+
+    result = _run_cli(tmp_path, ["--init-config"], {"TERMI_CLI_HOME": home})
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert config_path.exists()

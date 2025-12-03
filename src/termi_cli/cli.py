@@ -87,6 +87,24 @@ def create_parser():
         help="Hiển thị thông tin cấu hình hiện tại (models, provider, v.v.).",
     )
     model_group.add_argument(
+        "--doctor",
+        action="store_true",
+        help=(
+            "Chạy kiểm tra nhanh môi trường (Python, Gemini, API keys) và cấu hình hiện tại.\n"
+            "Hữu ích khi bạn gặp lỗi liên quan version Python hoặc thiếu API key."
+        ),
+    )
+    model_group.add_argument(
+        "--init-config",
+        "--init",
+        dest="init_config",
+        action="store_true",
+        help=(
+            "Khởi tạo file config.json mặc định tại TERMI_CLI_HOME (nếu chưa tồn tại).\n"
+            "Không ghi đè cấu hình hiện có, chỉ đảm bảo file tồn tại với giá trị mặc định hợp lý."
+        ),
+    )
+    model_group.add_argument(
         "--profile",
         type=str,
         help="Áp dụng một profile cấu hình nhanh cho phiên này.",

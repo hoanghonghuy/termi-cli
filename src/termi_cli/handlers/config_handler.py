@@ -21,14 +21,6 @@ def model_selection_wizard(console: Console, config: dict):
     model_labels = config.get("model_labels") or {}
 
     providers = [
-        ("gemini", "", i18n.tr(language, "config_provider_desc_gemini")),
-        ("deepseek", "", i18n.tr(language, "config_provider_desc_deepseek")),
-        ("groq", "", i18n.tr(language, "config_provider_desc_groq")),
-        ("openrouter", "", i18n.tr(language, "config_provider_desc_openrouter")),
-        ("ollama", "", i18n.tr(language, "config_provider_desc_ollama")),
-    ]
-
-    providers = [
         ("gemini", "🟢 Gemini", i18n.tr(language, "config_provider_desc_gemini")),
         ("deepseek", "🟣 DeepSeek", i18n.tr(language, "config_provider_desc_deepseek")),
         ("groq", "🟠 Groq", i18n.tr(language, "config_provider_desc_groq")),
