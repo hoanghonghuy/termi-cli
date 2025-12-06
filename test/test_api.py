@@ -4,6 +4,7 @@ import pytest
 from unittest.mock import MagicMock
 from rich.console import Console
 from termi_cli import api
+from termi_cli.infrastructure import http_providers
 
 def test_initialize_api_keys(mocker):
     """
@@ -163,7 +164,14 @@ def test_generate_text_routes_to_groq(monkeypatch):
         captured["messages"] = messages
         return {"choices": [{"message": {"content": "hi from groq"}}]}
 
-    monkeypatch.setattr(api, "_resilient_groq_api_call", fake_groq_call, raising=True)
+    # generate_text hiện route sang infrastructure.http_providers.http_generate_text,
+    # trong đó GroqProvider.generate sẽ gọi _resilient_groq_api_call với model đã normalize.
+    monkeypatch.setattr(
+        http_providers,
+        "_resilient_groq_api_call",
+        fake_groq_call,
+        raising=True,
+    )
 
     text = api.generate_text(
         "groq-llama-3.1-70b", "hello", system_instruction="sys-instr"
@@ -186,7 +194,12 @@ def test_generate_text_routes_to_ollama_cloud(monkeypatch):
         captured["messages"] = messages
         return {"message": {"content": "hi from ollama cloud"}}
 
-    monkeypatch.setattr(api, "_ollama_cloud_chat_completions", fake_cloud_call, raising=True)
+    monkeypatch.setattr(
+        http_providers,
+        "_ollama_cloud_chat_completions",
+        fake_cloud_call,
+        raising=True,
+    )
 
     text = api.generate_text(
         "ollama-cloud/qwen3-coder:480b-cloud", "hello", system_instruction="sys-instr"
@@ -206,7 +219,12 @@ def test_generate_text_routes_to_ollama(monkeypatch):
         captured["messages"] = messages
         return {"choices": [{"message": {"content": "hi from ollama"}}]}
 
-    monkeypatch.setattr(api, "_ollama_chat_completions", fake_ollama_call, raising=True)
+    monkeypatch.setattr(
+        http_providers,
+        "_ollama_chat_completions",
+        fake_ollama_call,
+        raising=True,
+    )
 
     text = api.generate_text(
         "ollama/qwen3:8b", "hello", system_instruction="sys-instr"
@@ -220,17 +238,19 @@ def test_generate_text_routes_to_ollama(monkeypatch):
 
 def test_parse_provider_json_response_handles_trailing_comma():
     body = '{"choices": [],}'
-    parsed = api._parse_provider_json_response(body, "DemoProvider")
+    parsed = http_providers._parse_provider_json_response(body, "DemoProvider")
+
     assert parsed == {"choices": []}
 
 def test_parse_provider_json_response_raises_on_invalid_json():
     body = '{"choices": [invalid]'
     with pytest.raises(RuntimeError):
-        api._parse_provider_json_response(body, "DemoProvider")
+        http_providers._parse_provider_json_response(body, "DemoProvider")
 
 def test_generate_text_http_uses_simple_cache(monkeypatch):
-    if hasattr(api, "_http_response_cache"):
-        api._http_response_cache.clear()
+    # Cache hiện nằm ở infrastructure.http_providers
+    if hasattr(http_providers, "_http_response_cache"):
+        http_providers._http_response_cache.clear()
 
     call_count = {"n": 0}
 
@@ -238,7 +258,12 @@ def test_generate_text_http_uses_simple_cache(monkeypatch):
         call_count["n"] += 1
         return {"choices": [{"message": {"content": f"hi {call_count['n']}"}}]}
 
-    monkeypatch.setattr(api, "_resilient_groq_api_call", fake_groq_call, raising=True)
+    monkeypatch.setattr(
+        http_providers,
+        "_resilient_groq_api_call",
+        fake_groq_call,
+        raising=True,
+    )
 
     text1 = api.generate_text("groq-llama-3.1-70b", "hello", system_instruction="sys-instr")
     text2 = api.generate_text("groq-llama-3.1-70b", "hello", system_instruction="sys-instr")

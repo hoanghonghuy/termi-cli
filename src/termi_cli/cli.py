@@ -4,11 +4,11 @@ def create_parser():
     """Tạo và cấu hình parser cho các tham số dòng lệnh."""
     parser = argparse.ArgumentParser(
         description=(
-            "Termi – AI CLI đa provider (Gemini, DeepSeek, Groq).\n\n"
+            "Termi – AI CLI đa provider (Gemini, DeepSeek, Groq, OpenRouter, Ollama).\n\n"
             "Ví dụ nhanh:\n"
             "  termi \"Giải thích đoạn code này\"\n"
-            "  termi --chat\n"
-            "  termi --agent \"Xây API CRUD cho User\""
+            "  termi --chat        (hoặc: termi chat)\n"
+            "  termi --agent \"Xây API CRUD cho User\"  (hoặc: termi agent \"Xây API CRUD cho User\")"
         ),
         formatter_class=argparse.RawTextHelpFormatter,
     )
@@ -57,7 +57,7 @@ def create_parser():
     model_group.add_argument("--list-models", action="store_true", help="Liệt kê các model khả dụng.")
     model_group.add_argument("--set-model", action="store_true", help="Chạy giao diện để chọn model mặc định.")
     
-    model_group.add_argument("-m", "--model", type=str, help="Chọn model cho phiên này (ghi đè tạm thời).")
+    model_group.add_argument("-m", "--model", type=str, help="Chọn model cho phiên này (ghi đè tạm thởi).")
     
     model_group.add_argument("-p", "--persona", type=str, help="Chọn một persona (tính cách) đã định nghĩa trong config.")
     model_group.add_argument("-si", "--system-instruction", type=str, help="Ghi đè chỉ dẫn hệ thống cho phiên này.")
@@ -67,7 +67,7 @@ def create_parser():
         dest="language",
         type=str,
         choices=["vi", "en"],
-        help="Chọn ngôn ngữ giao diện cho phiên này (override tạm thời config.language).",
+        help="Chọn ngôn ngữ giao diện cho phiên này (override tạm thởi config.language).",
     )
     model_group.add_argument(
         "--verbose",

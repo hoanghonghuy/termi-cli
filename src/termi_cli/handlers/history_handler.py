@@ -17,311 +17,62 @@ from termi_cli import api, i18n, utils
 from termi_cli.config import load_config, APP_DIR
 from .core_handler import handle_conversation_turn
 from termi_cli.json_utils import JsonPayloadParseError, parse_json_payload
+from termi_cli.application.history_service import HistoryService
 
 # --- CONSTANTS ---
 HISTORY_DIR = str(APP_DIR / "chat_logs")
 logger = logging.getLogger(__name__)
 
 def load_history_file(file_path: str) -> dict:
-    """Đọc file history và parse JSON với sanitizer trailing comma."""
+    """Wrapper mỏng uỷ quyền cho HistoryService.load_history_file.
 
-    with open(file_path, "r", encoding="utf-8") as f:
-        raw_content = f.read()
-    try:
-        return parse_json_payload(raw_content)
-    except JsonPayloadParseError as err:
-        snippet = raw_content[:200].replace("\n", " ")
-        logger.warning("History '%s' chứa JSON không hợp lệ: %s", file_path, err)
-        raise ValueError(f"Invalid history JSON in {file_path}: {err}. Body: {snippet}") from err
+    Giữ nguyên API cũ để các module khác (chat_service, __main__) không cần đổi chữ ký.
+    """
+
+    service = HistoryService()
+    return service.load_history_file(file_path)
 
 def print_formatted_history(console: Console, history: list):
-    """In lịch sử trò chuyện đã tải ra màn hình."""
-    language = load_config().get("language", "vi")
-    console.print(i18n.tr(language, "history_section_header"))
-    for item in history:
-        role = item.get("role", "unknown")
-        text_parts = [p.get("text", "") for p in item.get("parts", []) if p.get("text")]
-        text = "".join(text_parts).strip()
-        if not text:
-            continue
-        if role == "user":
-            console.print(f"\n{i18n.tr(language, 'history_user_label')} {text}")
-        elif role == "model":
-            console.print(f"\n{i18n.tr(language, 'history_ai_label')}")
-            console.print(Markdown(text))
-    console.print(i18n.tr(language, "history_section_footer"))
+    """Wrapper mỏng gọi HistoryService.print_formatted_history."""
+
+    service = HistoryService()
+    return service.print_formatted_history(console, history)
 
 def serialize_history(history):
-    """Chuyển đổi history thành format JSON có thể serialize một cách an toàn."""
-    serializable = []
-    for content in history:
-        content_dict = {"role": content.role, "parts": []}
-        for part in content.parts:
-            part_dict = {}
-            if hasattr(part, "text") and part.text is not None:
-                part_dict["text"] = part.text
-            elif hasattr(part, "function_call") and part.function_call is not None:
-                part_dict["function_call"] = {
-                    "name": part.function_call.name,
-                    "args": dict(part.function_call.args),
-                }
-            elif (
-                hasattr(part, "function_response")
-                and part.function_response is not None
-            ):
-                part_dict["function_response"] = {
-                    "name": part.function_response.name,
-                    "response": dict(part.function_response.response),
-                }
-            if part_dict:
-                content_dict["parts"].append(part_dict)
-        if content_dict["parts"]:
-            serializable.append(content_dict)
-    return serializable
+    """Wrapper mỏng gọi HistoryService.serialize_history."""
+
+    service = HistoryService()
+    return service.serialize_history(history)
 
 def show_history_browser(console: Console, filter_query: str | None = None):
-    language = load_config().get("language", "vi")
-    console.print(
-        i18n.tr(language, "history_scanning_files", dir=HISTORY_DIR)
-    )
+    """Wrapper mỏng gọi HistoryService.show_history_browser."""
 
-    if not os.path.exists(HISTORY_DIR):
-        console.print(
-            i18n.tr(language, "history_dir_missing", dir=HISTORY_DIR)
-        )
-        return None
-
-    history_files = glob.glob(os.path.join(HISTORY_DIR, "*.json"))
-
-    if not history_files:
-        console.print(i18n.tr(language, "no_history_files_found"))
-        return None
-
-    history_metadata = []
-    for file_path in history_files:
-        try:
-            data = load_history_file(file_path)
-            title = data.get("title", os.path.basename(file_path))
-            last_modified_iso = data.get(
-                "last_modified",
-                datetime.fromtimestamp(os.path.getmtime(file_path)).isoformat(),
-            )
-            history_metadata.append(
-                {
-                    "title": title,
-                    "last_modified": last_modified_iso,
-                    "file_path": file_path,
-                }
-            )
-        except (ValueError, OSError) as err:
-            logger.warning("Bỏ qua history '%s' vì lỗi đọc file: %s", file_path, err)
-            continue
-
-    history_metadata.sort(key=lambda x: x["last_modified"], reverse=True)
-
-    if filter_query:
-        q = filter_query.lower()
-        history_metadata = [
-            meta
-            for meta in history_metadata
-            if q in str(meta.get("title", "")).lower()
-        ]
-        if not history_metadata:
-            console.print(i18n.tr(language, "no_history_files_found"))
-            return None
-
-    table = Table(title=i18n.tr(language, "history_table_title"))
-    table.add_column(i18n.tr(language, "history_table_column_index"), style="cyan")
-    table.add_column(i18n.tr(language, "history_table_column_title"), style="magenta")
-    table.add_column(i18n.tr(language, "history_table_column_last_updated"), style="green")
-
-    for i, meta in enumerate(history_metadata):
-        mod_time_str = datetime.fromisoformat(meta["last_modified"]).strftime(
-            "%Y-%m-%d %H:%M:%S"
-        )
-        table.add_row(str(i + 1), meta["title"], mod_time_str)
-    console.print(table)
-    try:
-        choice_str = console.input(
-            i18n.tr(language, "history_select_prompt"),
-            markup=False
-        )
-
-        if not choice_str:
-            console.print(i18n.tr(language, "history_browser_exit"))
-            return None
-
-        choice = int(choice_str)
-        if 1 <= choice <= len(history_metadata):
-            selected_file = history_metadata[choice - 1]["file_path"]
-            console.print(
-                i18n.tr(language, "history_loading_selected", title=history_metadata[choice - 1]["title"])
-            )
-
-            return selected_file
-        else:
-            console.print(i18n.tr(language, "history_invalid_choice"))
-    except (ValueError, KeyboardInterrupt, EOFError):
-        console.print(i18n.tr(language, "history_browser_exit"))
-
-    return None
+    service = HistoryService()
+    return service.show_history_browser(console, filter_query)
 
 def handle_history_summary(
     console: Console, config: dict, history: list, cli_help_text: str
 ):
 
-    language = config.get("language", "vi")
-    console.print(
-        i18n.tr(language, "history_summary_start")
-    )
+    """Wrapper mỏng gọi HistoryService.handle_history_summary."""
 
-    history_text = ""
-    for item in history:
-        role = "User" if item.get("role") == "user" else "AI"
-        text = "".join(
-            p.get("text", "") for p in item.get("parts", []) if p.get("text")
-        ).strip()
-        if text:
-            history_text += f"{role}: {text}\n"
-
-    if not history_text:
-        console.print(i18n.tr(language, "no_history_to_summarize"))
-        return
-
-    prompt = (
-        "Dưới đây là một cuộc trò chuyện đã được lưu. "
-        "Hãy đọc và tóm tắt lại nội dung chính của nó trong vài gạch đầu dòng ngắn gọn.\n\n"
-        f"--- NỘI DUNG CUỘC TRÒ CHUYỆN ---\n{history_text}---\n\n"
-        "Tóm tắt của bạn:"
-    )
-
-    model_name = config.get("default_model")
-
-    # Nếu default_model là HTTP provider (DeepSeek/Groq/OpenRouter/Ollama), tóm tắt trực tiếp qua HTTP.
-    use_http = (
-        isinstance(model_name, str)
-        and (
-            model_name.startswith("deepseek-")
-            or model_name.startswith("groq-")
-            or api.is_openrouter_model(model_name)
-            or api.is_ollama_model(model_name)
-        )
-    )
-
-    try:
-        if use_http:
-            console.print(i18n.tr(language, "history_summary_title"))
-            response_text = api.generate_text(
-                model_name,
-                prompt,
-                system_instruction="You are a helpful summarizer.",
-            )
-            if response_text:
-                console.print(Markdown(response_text))
-            return
-
-        # Nhánh mặc định: dùng Gemini chat_session + handle_conversation_turn như trước đây.
-        chat_session = api.start_chat_session(
-            model_name,
-            "You are a helpful summarizer.",
-            history=[],
-            cli_help_text=cli_help_text,
-        )
-
-        console.print(i18n.tr(language, "history_summary_title"))
-        handle_conversation_turn(
-            chat_session,
-            [prompt],
-            console,
-            args=argparse.Namespace(persona=None, format="rich", cli_help_text=cli_help_text),
-        )
-
-    except Exception as e:
-        logger.error("Lỗi tóm tắt lịch sử: %s", e)
-        console.print(i18n.tr(language, "error_history_summary", error=e))
+    service = HistoryService()
+    return service.handle_history_summary(console, config, history, cli_help_text)
 
 def _resolve_history_file(target: str) -> str:
-    """Chuyển một tham số generic (path hoặc topic) thành đường dẫn file lịch sử."""
-    if os.path.exists(target):
-        return target
-    return os.path.join(HISTORY_DIR, f"chat_{utils.sanitize_filename(target)}.json")
+    """Giữ lại helper cũ để tương thích, uỷ quyền cho HistoryService._resolve_history_file."""
+
+    service = HistoryService()
+    return service._resolve_history_file(target)
 
 def delete_history_entry(console: Console, target: str) -> bool:
-    """Xóa một lịch sử chat theo đường dẫn file hoặc topic (non-interactive)."""
-    language = load_config().get("language", "vi")
-    file_path = _resolve_history_file(target)
+    """Wrapper mỏng gọi HistoryService.delete_history_entry."""
 
-    if not os.path.exists(file_path):
-        console.print(i18n.tr(language, "history_file_not_found", target=target))
-        return False
-
-    try:
-        title = os.path.basename(file_path)
-        try:
-            data = load_history_file(file_path)
-            title = data.get("title", title)
-        except Exception:
-            logger.warning("Không thể đọc meta trước khi xoá history '%s'", file_path)
-
-        os.remove(file_path)
-        console.print(
-            i18n.tr(language, "history_delete_success", title=title)
-        )
-
-        return True
-    except Exception as e:
-        logger.error("Lỗi xóa lịch sử: %s", e)
-        console.print(
-            i18n.tr(language, "chat_cannot_save_history_error", error=e)
-        )
-        return False
+    service = HistoryService()
+    return service.delete_history_entry(console, target)
 
 def rename_history_entry(console: Console, old: str, new_title: str) -> bool:
-    """Đổi tên lịch sử chat theo path hoặc topic sang một tiêu đề mới (non-interactive)."""
-    language = load_config().get("language", "vi")
+    """Wrapper mỏng gọi HistoryService.rename_history_entry."""
 
-    if not new_title:
-        console.print(i18n.tr(language, "history_invalid_choice"))
-        return False
-
-    file_path = _resolve_history_file(old)
-    if not os.path.exists(file_path):
-        console.print(i18n.tr(language, "history_file_not_found", target=old))
-        return False
-
-    try:
-        try:
-            data = load_history_file(file_path)
-        except Exception:
-            data = {}
-
-        data["title"] = new_title
-
-        new_filename = f"chat_{utils.sanitize_filename(new_title)}.json"
-        new_path = os.path.join(HISTORY_DIR, new_filename)
-
-        # Tránh ghi đè file khác nếu trùng tên
-        if (
-            os.path.abspath(new_path) != os.path.abspath(file_path)
-            and os.path.exists(new_path)
-        ):
-            console.print(
-                i18n.tr(language, "history_rename_conflict", title=new_title)
-            )
-            return False
-
-        if os.path.abspath(new_path) != os.path.abspath(file_path):
-            os.rename(file_path, new_path)
-
-        with open(new_path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=2, ensure_ascii=False)
-
-        console.print(
-            i18n.tr(language, "history_rename_success", title=new_title)
-        )
-        return True
-    except Exception as e:
-        console.print(
-            i18n.tr(language, "chat_cannot_save_history_error", error=e)
-        )
-        return False
+    service = HistoryService()
+    return service.rename_history_entry(console, old, new_title)

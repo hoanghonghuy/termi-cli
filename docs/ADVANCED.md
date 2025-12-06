@@ -6,6 +6,26 @@ title: Termi – Advanced Usage
 
 This document describes the advanced features that are only briefly mentioned in the main `README.md`.
 
+## Developer setup
+
+For local development, install Termi in editable mode with the `dev` extras:
+
+```bash
+pip install -e .[dev]
+```
+
+This installs the main test and lint tools:
+
+- `pytest`, `pytest-mock` – run the test suite.
+- `ruff` – static linting.
+
+Typical developer loop:
+
+```bash
+pytest
+python -m ruff check src test tests
+```
+
 ## Developer utilities
 
 - `--document <FILE_PATH>`  

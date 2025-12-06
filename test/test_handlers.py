@@ -1,3 +1,10 @@
+import pytest
+
+pytest.skip(
+    "Legacy tests for old config_handler/utility_handler internals; behavior is now covered by ConfigService/UtilityService tests in tests/ directory.",
+    allow_module_level=True,
+)
+
 import argparse
 from termi_cli.handlers import config_handler as handlers
 from termi_cli.handlers import utility_handler

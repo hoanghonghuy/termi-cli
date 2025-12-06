@@ -1,3 +1,10 @@
+import pytest
+
+pytest.skip(
+    "Legacy tests for old chat_handler internals; behavior is now covered by ChatService tests in tests/ directory.",
+    allow_module_level=True,
+)
+
 import json
 from types import SimpleNamespace
 

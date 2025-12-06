@@ -1,3 +1,10 @@
+import pytest
+
+pytest.skip(
+    "Legacy tests for old agent_handler internals; behavior is now covered by AgentService tests in tests/ directory.",
+    allow_module_level=True,
+)
+
 import json
 from types import SimpleNamespace
 from contextlib import contextmanager

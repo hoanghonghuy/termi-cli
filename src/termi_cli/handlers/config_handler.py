@@ -11,6 +11,7 @@ from rich.table import Table
 from termi_cli import api, i18n
 from termi_cli.config import save_config
 from termi_cli.handlers import mini_agent
+from termi_cli.application.config_service import ConfigService
 
 
 def model_selection_wizard(console: Console, config: dict):
@@ -429,354 +430,88 @@ def model_selection_wizard(console: Console, config: dict):
 
 # --- Handlers for custom instructions ---
 def add_instruction(console: Console, config: dict, instruction: str):
-    language = config.get("language", "vi")
-    if "saved_instructions" not in config:
-        config["saved_instructions"] = []
-    if instruction not in config["saved_instructions"]:
-        config["saved_instructions"].append(instruction)
-        save_config(config)
-        console.print(
-            i18n.tr(language, "config_instruction_added", instruction=instruction)
-        )
-    else:
-        console.print(i18n.tr(language, "config_instruction_exists"))
+    """Wrapper mỏng gọi ConfigService.add_instruction."""
+
+    service = ConfigService()
+    return service.add_instruction(console, config, instruction)
+
 
 def list_instructions(console: Console, config: dict):
-    instructions = config.get("saved_instructions", [])
-    language = config.get("language", "vi")
-    if not instructions:
-        console.print(i18n.tr(language, "config_no_instructions"))
-        return
+    """Wrapper mỏng gọi ConfigService.list_instructions."""
 
-    table = Table(title=i18n.tr(language, "config_instructions_table_title"))
+    service = ConfigService()
+    return service.list_instructions(console, config)
 
-    table.add_column("#", style="cyan")
-    table.add_column("Chỉ Dẫn", style="magenta")
-    for i, instruction in enumerate(instructions):
-        table.add_row(str(i + 1), instruction)
-    console.print(table)
 
 def remove_instruction(console: Console, config: dict, index: int):
-    instructions = config.get("saved_instructions", [])
-    language = config.get("language", "vi")
-    if not 1 <= index <= len(instructions):
-        console.print(
-            i18n.tr(language, "config_invalid_instruction_index", max_index=len(instructions))
-        )
-        return
+    """Wrapper mỏng gọi ConfigService.remove_instruction."""
 
-    removed_instruction = instructions.pop(index - 1)
-    config["saved_instructions"] = instructions
-    save_config(config)
-    console.print(
-        i18n.tr(language, "config_instruction_removed", instruction=removed_instruction)
-    )
+    service = ConfigService()
+    return service.remove_instruction(console, config, index)
 
-# --- Handlers for persona ---
+
 def add_persona(console: Console, config: dict, name: str, instruction: str):
-    """Thêm một persona mới vào config."""
-    language = config.get("language", "vi")
-    if "personas" not in config:
-        config["personas"] = {}
-    
-    config["personas"][name] = instruction
-    save_config(config)
-    console.print(i18n.tr(language, "config_persona_saved", name=name))
+    """Wrapper mỏng gọi ConfigService.add_persona."""
+
+    service = ConfigService()
+    return service.add_persona(console, config, name, instruction)
+
 
 def list_personas(console: Console, config: dict):
-    """Liệt kê các persona đã lưu."""
-    personas = config.get("personas", {})
-    language = config.get("language", "vi")
-    if not personas:
-        console.print(i18n.tr(language, "config_no_personas"))
-        return
+    """Wrapper mỏng gọi ConfigService.list_personas."""
 
-    table = Table(title=i18n.tr(language, "config_personas_table_title"))
+    service = ConfigService()
+    return service.list_personas(console, config)
 
-    table.add_column("Tên Persona", style="cyan")
-    table.add_column("Chỉ Dẫn Hệ Thống", style="magenta")
-    for name, instruction in personas.items():
-        table.add_row(name, instruction)
-    console.print(table)
 
 def remove_persona(console: Console, config: dict, name: str):
-    """Xóa một persona theo tên."""
-    personas = config.get("personas", {})
-    language = config.get("language", "vi")
-    if name not in personas:
-        console.print(i18n.tr(language, "config_persona_not_found", name=name))
-        return
+    """Wrapper mỏng gọi ConfigService.remove_persona."""
 
-    personas.pop(name)
-    config["personas"] = personas
-    save_config(config)
-    console.print(
-        i18n.tr(language, "config_persona_removed", name=name)
-    )
+    service = ConfigService()
+    return service.remove_persona(console, config, name)
 
 
 def save_profile(console: Console, config: dict, name: str):
-    """Lưu snapshot cấu hình model hiện tại thành một profile nhanh."""
-    language = config.get("language", "vi")
-    profiles = config.get("profiles") or {}
+    """Wrapper mỏng gọi ConfigService.save_profile."""
 
-    profiles[name] = {
-        "default_model": config.get("default_model"),
-        "code_model": config.get("code_model"),
-        "commit_model": config.get("commit_model"),
-        "agent_model": config.get("agent_model", "models/gemini-pro-latest"),
-        "language": config.get("language", "vi"),
-        "default_system_instruction": config.get(
-            "default_system_instruction",
-            "You are a helpful AI assistant.",
-        ),
-    }
-
-    config["profiles"] = profiles
-    save_config(config)
-    console.print(
-        i18n.tr(language, "config_profile_saved", name=name)
-    )
+    service = ConfigService()
+    return service.save_profile(console, config, name)
 
 
 def list_profiles(console: Console, config: dict):
-    """Liệt kê các profile cấu hình nhanh đã lưu."""
-    language = config.get("language", "vi")
-    profiles = config.get("profiles") or {}
+    """Wrapper mỏng gọi ConfigService.list_profiles."""
 
-    if not profiles:
-        console.print(i18n.tr(language, "config_no_profiles"))
-        return
-
-    title = i18n.tr(language, "config_profile_table_title")
-    table = Table(title=title)
-    table.add_column("#", style="cyan")
-    table.add_column("Profile", style="magenta")
-    table.add_column("default_model", style="green")
-    table.add_column("language", style="yellow")
-
-    for idx, (name, data) in enumerate(profiles.items(), start=1):
-        table.add_row(
-            str(idx),
-            name,
-            str(data.get("default_model", "-")),
-            str(data.get("language", "-")),
-        )
-
-    console.print(table)
+    service = ConfigService()
+    return service.list_profiles(console, config)
 
 
 def remove_profile(console: Console, config: dict, name: str):
-    """Xóa một profile cấu hình nhanh theo tên."""
-    language = config.get("language", "vi")
-    profiles = config.get("profiles") or {}
+    """Wrapper mỏng gọi ConfigService.remove_profile."""
 
-    if name not in profiles:
-        console.print(
-            i18n.tr(language, "config_profile_not_found", name=name)
-        )
-        return
-
-    profiles.pop(name)
-    config["profiles"] = profiles
-    save_config(config)
-    console.print(
-        i18n.tr(language, "config_profile_removed", name=name)
-    )
+    service = ConfigService()
+    return service.remove_profile(console, config, name)
 
 
 def apply_profile(console: Console, config: dict, name: str):
-    """Áp dụng một profile cho runtime hiện tại (không ghi file)."""
-    language = config.get("language", "vi")
-    profiles = config.get("profiles") or {}
+    """Wrapper mỏng gọi ConfigService.apply_profile."""
 
-    if name not in profiles:
-        console.print(
-            i18n.tr(language, "config_profile_not_found", name=name)
-        )
-        return
-
-    profile = profiles[name]
-
-    for key in [
-        "default_model",
-        "code_model",
-        "commit_model",
-        "agent_model",
-        "language",
-        "default_system_instruction",
-    ]:
-        if key in profile:
-            config[key] = profile[key]
-
-    console.print(
-        i18n.tr(language, "config_profile_applied", name=name)
-    )
+    service = ConfigService()
+    return service.apply_profile(console, config, name)
 
 
 def show_diagnostics(console: Console, config: dict):
-    """Hiển thị thông tin cấu hình hiện tại cho các loại model chính."""
-    language = config.get("language", "vi")
+    """Wrapper mỏng gọi ConfigService.show_diagnostics."""
 
-    default_model = config.get("default_model")
-    code_model = config.get("code_model") or default_model
-    commit_model = config.get("commit_model") or code_model or default_model
-    agent_model = config.get("agent_model", "models/gemini-pro-latest")
+    service = ConfigService()
+    return service.show_diagnostics(console, config)
 
-    def _provider_name(model_name: str) -> str:
-        if not isinstance(model_name, str):
-            return "Gemini"
-        if model_name.startswith("deepseek-"):
-            return "DeepSeek"
-        if model_name.startswith("groq-"):
-            return "Groq"
-        if api.is_ollama_model(model_name):
-            return "Ollama"
-        if api.is_ollama_cloud_model(model_name):
-            return "Ollama Cloud"
-        if api.is_openrouter_model(model_name):
-            return "OpenRouter"
-        return "Gemini"
 
-    def _provider_label(model_name: str) -> str:
-        name = _provider_name(model_name)
-        icons = {
-            "Gemini": "🟢 Gemini",
-            "DeepSeek": "🟣 DeepSeek",
-            "Groq": "🟠 Groq",
-            "OpenRouter": "🔵 OpenRouter",
-            "Ollama": "⚫ Ollama",
-            "Ollama Cloud": "⚫☁️ Ollama Cloud",
-        }
+def model_selection_wizard(console: Console, config: dict):
+    """Wrapper mỏng gọi ConfigService.model_selection_wizard.
 
-        return icons.get(name, name)
+    Hàm này override định nghĩa ban đầu ở đầu file để handler trở nên mỏng,
+    chỉ uỷ quyền logic lựa chọn model cho ConfigService trong application layer.
+    """
 
-    title = (
-        "Thông tin cấu hình model hiện tại"
-        if language == "vi"
-        else "Current model configuration diagnostics"
-    )
-
-    table = Table(title=title)
-    role_col = "Vai trò" if language == "vi" else "Role"
-    table.add_column(role_col, style="cyan", no_wrap=True)
-    table.add_column("Model", style="magenta")
-    table.add_column("Provider", style="green", no_wrap=True)
-
-    rows = [
-        ("default", default_model),
-        ("code", code_model),
-        ("commit", commit_model),
-        ("agent", agent_model),
-    ]
-
-    for role, model_name in rows:
-        if language == "vi":
-            if role == "default":
-                role_label = "default_model"
-            elif role == "code":
-                role_label = "code_model"
-            elif role == "commit":
-                role_label = "commit_model"
-            else:
-                role_label = "agent_model"
-        else:
-            role_label = role
-
-        model_str = str(model_name) if model_name is not None else "-"
-        table.add_row(role_label, model_str, _provider_label(model_name))
-
-    console.print(table)
-
-    # Thông tin số lượng API key (không in giá trị)
-    try:
-        from termi_cli import api as _api
-
-        google_keys = _api.initialize_api_keys() or []
-        deepseek_keys = []
-        groq_keys = []
-        openrouter_keys = []
-        try:
-            deepseek_keys = _api.initialize_deepseek_api_keys() or []
-        except Exception:
-            deepseek_keys = []
-        try:
-            groq_keys = _api.initialize_groq_api_keys() or []
-        except Exception:
-            groq_keys = []
-        try:
-            openrouter_keys = _api.initialize_openrouter_api_keys() or []
-        except Exception:
-            openrouter_keys = []
-
-        console.print(
-            i18n.tr(language, "diagnostics_google_keys", count=len(google_keys))
-        )
-        console.print(
-            i18n.tr(language, "diagnostics_deepseek_keys", count=len(deepseek_keys))
-        )
-        console.print(
-            i18n.tr(language, "diagnostics_groq_keys", count=len(groq_keys))
-        )
-        console.print(
-            i18n.tr(language, "diagnostics_openrouter_keys", count=len(openrouter_keys))
-        )
-
-    except Exception:
-        # Không để lỗi diagnostics API key làm vỡ lệnh
-        pass
-
-    # Giải thích rõ hành vi fallback của Agent khi dùng DeepSeek/Groq
-    if isinstance(agent_model, str) and (
-        agent_model.startswith("deepseek-") or agent_model.startswith("groq-")
-    ):
-        console.print(i18n.tr(language, "diagnostics_agent_fallback_note"))
-
-    # Gợi ý thêm về cách dùng cho từng provider đang hiện diện trong cấu hình
-    providers_in_use = { _provider_name(model_name) for _, model_name in rows if model_name is not None }
-    for provider in sorted(providers_in_use):
-        if provider == "Gemini":
-            hint_key = "diagnostics_hint_gemini"
-        elif provider == "DeepSeek":
-            hint_key = "diagnostics_hint_deepseek"
-        elif provider == "Groq":
-            hint_key = "diagnostics_hint_groq"
-        elif provider == "OpenRouter":
-            hint_key = "diagnostics_hint_openrouter"
-        else:
-            continue
-        console.print(i18n.tr(language, hint_key))
-
-    # Thông tin mini-agent HTTP (single-turn) để dễ debug cấu hình
-    mini_cfg = config.get("mini_agent") or {}
-    rules = mini_cfg.get("rules") or []
-    tools = sorted({
-        rule.get("tool_name")
-        for rule in rules
-        if isinstance(rule, dict) and rule.get("tool_name")
-    })
-    enabled = bool(mini_cfg.get("enabled", True))
-
-    if language == "vi":
-        status = "bật" if enabled else "tắt"
-        console.print(
-            f"[dim]Mini-agent HTTP (single-turn): {status}, {len(rules)} rule, tools: {', '.join(tools) or '-'}[/dim]"
-        )
-    else:
-        status = "enabled" if enabled else "disabled"
-        console.print(
-            f"[dim]HTTP mini-agent (single-turn): {status}, {len(rules)} rules, tools: {', '.join(tools) or '-'}[/dim]"
-        )
-
-    issues = mini_agent.validate_mini_agent_rules(config)
-    if issues:
-        warning_prefix = i18n.tr(language, "diagnostics_mini_agent_warnings")
-        console.print(warning_prefix)
-        for msg in issues:
-            console.print(f"[yellow]- {msg}[/yellow]")
-
-    # Gợi ý nhỏ về flag CLI để tạm thởi tắt mini-agent trong từng lần chạy
-    if language == "vi":
-        console.print("[dim]Mẹo: dùng cờ --mini-agent-off để tạm thởi tắt mini-agent HTTP cho phiên này (không sửa config.json).[/dim]")
-    else:
-        console.print("[dim]Hint: use --mini-agent-off to temporarily disable the HTTP mini-agent for this run (without changing config.json).[/dim]")
+    service = ConfigService()
+    return service.model_selection_wizard(console, config)

@@ -3,6 +3,7 @@ import sys
 import io
 import contextlib
 import logging
+import argparse
 
 # Workaround tương thích Python 3.14: buộc protobuf dùng implementation Python thuần
 # thay vì extension C (_upb/_message), tránh lỗi "Metaclasses with custom tp_new".
@@ -54,6 +55,8 @@ except (ImportError, AttributeError):
 
 # ruff: noqa: E402 - các import bên dưới phụ thuộc vào phần bootstrap phía trên
 from termi_cli import api, utils, cli, memory, i18n
+from termi_cli.presentation import cli_app
+
 from termi_cli.config import load_config, APP_DIR, CONFIG_PATH
 
 from termi_cli.handlers import (
@@ -419,6 +422,21 @@ def _handle_history_flow(console: Console, config: dict, language: str, args, cl
     return history, False
 
 
+def _preprocess_subcommands(argv):
+    """Hỗ trợ cú pháp dạng `termi chat` / `termi agent` mà không phá vỡ flags cũ."""
+
+    if not argv:
+        return argv
+
+    first = argv[0]
+    if first == "chat":
+        return ["--chat", *argv[1:]]
+    if first == "agent":
+        return ["--agent", *argv[1:]]
+
+    return argv
+
+
 def main(provided_args=None):
     """Hàm chính điều phối toàn bộ ứng dụng."""
     load_dotenv()
@@ -431,258 +449,36 @@ def main(provided_args=None):
     parser = cli.create_parser()
 
     try:
-        args = provided_args or parser.parse_args()
+        # Nếu tests truyền sẵn một argparse.Namespace thì dùng trực tiếp
+        # để không phá vỡ hành vi cũ.
+        if isinstance(provided_args, argparse.Namespace):
+            args = provided_args
+        else:
+            raw_args = provided_args if provided_args is not None else sys.argv[1:]
+            # Hỗ trợ cú pháp ngắn `termi chat` / `termi agent` cho người dùng cuối.
+            raw_args = _preprocess_subcommands(list(raw_args))
+            args = parser.parse_args(raw_args)
         cli_help_text = parser.format_help()
         args.cli_help_text = cli_help_text
 
-        # Cho phép override ngôn ngữ tạm thởi qua --lang/--language
-        if getattr(args, "language", None):
-            language = args.language
-            config["language"] = language
-
-        # Điều chỉnh mức logging console theo --verbose/--quiet
-        root_logger = logging.getLogger()
-
-        if getattr(args, "verbose", False):
-            for handler in root_logger.handlers:
-                if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
-                    handler.setLevel(logging.INFO)
-        elif getattr(args, "quiet", False):
-            for handler in root_logger.handlers:
-                if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
-                    handler.setLevel(logging.ERROR)
-
-        # Khởi tạo config.json mặc định nếu chưa tồn tại (nhẹ nhàng hơn reset-config).
-        if getattr(args, "init_config", False):
-            load_config()
-
-            console.print(
-                i18n.tr(
-                    language,
-                    "config_init_success",
-                    path=str(CONFIG_PATH),
-                )
-            )
-            return
-
-        # Cho phép reset toàn bộ config về mặc định (xoá file config.json hiện tại)
-        if getattr(args, "reset_config", False):
-            # Debug thêm khi chạy dưới pytest để kiểm tra đường dẫn
-            if "PYTEST_CURRENT_TEST" in os.environ:
-                console.print(f"[DEBUG] TERMI_CLI_HOME={os.getenv('TERMI_CLI_HOME')}")
-                console.print(f"[DEBUG] APP_DIR={APP_DIR}")
-                console.print(f"[DEBUG] CONFIG_PATH={CONFIG_PATH}")
-                console.print(f"[DEBUG] CONFIG_PATH.exists(before)={CONFIG_PATH.exists()}")
-
-            # Chỉ hỏi confirm nếu đang chạy trong TTY; nếu không (script/test) thì bỏ qua confirm
-            if sys.stdin.isatty() and "PYTEST_CURRENT_TEST" not in os.environ:
-                answer = console.input(i18n.tr(language, "config_reset_confirm"), markup=False).strip().lower()
-                if answer not in ("y", "yes"):
-                    console.print(i18n.tr(language, "config_reset_cancelled"))
-                    return
-
-            try:
-                if CONFIG_PATH.exists():
-                    CONFIG_PATH.unlink()
-
-                load_config()
-
-                if "PYTEST_CURRENT_TEST" in os.environ:
-                    console.print(f"[DEBUG] CONFIG_PATH.exists(after)={CONFIG_PATH.exists()}")
-                    if CONFIG_PATH.exists():
-                        try:
-                            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-                                console.print(f"[DEBUG] CONFIG_CONTENT(after)={f.read()}")
-                        except Exception:
-                            pass
-
-                console.print(i18n.tr(language, "config_reset_success", path=str(CONFIG_PATH)))
-            except Exception as e:
-                console.print(i18n.tr(language, "config_reset_error", error=e))
-            return
-
-        # Cho phép xoá database trí nhớ dài hạn bằng một lệnh riêng
-        if getattr(args, "reset_memory", False):
-            # Debug thêm khi chạy dưới pytest để kiểm tra đường dẫn
-            if "PYTEST_CURRENT_TEST" in os.environ:
-                console.print(f"[DEBUG] TERMI_CLI_HOME={os.getenv('TERMI_CLI_HOME')}")
-                console.print(f"[DEBUG] APP_DIR={APP_DIR}")
-                console.print(f"[DEBUG] DB_PATH={memory.DB_PATH}")
-                console.print(f"[DEBUG] DB_PATH.exists(before)={os.path.exists(memory.DB_PATH)}")
-
-            # Chỉ hỏi confirm nếu đang chạy trong TTY; nếu không (script/test) thì bỏ qua confirm
-            if sys.stdin.isatty() and "PYTEST_CURRENT_TEST" not in os.environ:
-                answer = console.input(i18n.tr(language, "memory_reset_confirm"), markup=False).strip().lower()
-                if answer not in ("y", "yes"):
-                    console.print(i18n.tr(language, "memory_reset_cancelled"))
-                    return
-
-            if memory.reset_memory_db():
-                if "PYTEST_CURRENT_TEST" in os.environ:
-                    console.print(f"[DEBUG] DB_PATH.exists(after)={os.path.exists(memory.DB_PATH)}")
-                console.print(i18n.tr(language, "memory_reset_success"))
-            else:
-                console.print(i18n.tr(language, "memory_reset_error"))
-            return
-
-        # Lệnh doctor: kiểm tra môi trường (Python, Gemini, API keys) + diagnostics cấu hình.
-        if getattr(args, "doctor", False):
-            console.print(f"[bold]Termi Doctor[/bold] - Python: {sys.version.splitlines()[0]}")
-
-            if getattr(api, "GEMINI_AVAILABLE", True):
-                console.print("[green]Gemini SDK: available in this environment.[/green]")
-            else:
-                console.print(
-                    "[yellow]Gemini SDK: unavailable in this Python environment. "
-                    "Bạn vẫn có thể dùng các provider HTTP (DeepSeek/Groq/OpenRouter/Ollama), "
-                    "hoặc chạy Termi trên Python 3.10–3.12 để dùng Gemini đầy đủ.[/yellow]"
-                )
-
-            config_handler.show_diagnostics(console, config)
-            return
-
-        # Lệnh chẩn đoán cấu hình không cần API key
-        if getattr(args, "diagnostics", False):
-            config_handler.show_diagnostics(console, config)
-            return
-
-        # Tìm kiếm trong trí nhớ dài hạn (không cần API ngoài)
-        if getattr(args, "memory_search", None):
-            result = memory.search_memory(args.memory_search)
-            if not result:
-                console.print(i18n.tr(language, "memory_search_no_results"))
-            else:
-                console.print(Markdown(result))
-            return
-
-        # Các thao tác history non-interactive
-        if getattr(args, "rm_history", None):
-            history_handler.delete_history_entry(console, args.rm_history)
-            return
-
-        if getattr(args, "rename_history", None):
-            old, new = args.rename_history
-            history_handler.rename_history_entry(console, old, new)
-            return
-
-        # Quản lý profile cấu hình nhanh
-        if getattr(args, "save_profile", None):
-            config_handler.save_profile(console, config, args.save_profile)
-            return
-
-        if getattr(args, "list_profiles", False):
-            config_handler.list_profiles(console, config)
-            return
-
-        if getattr(args, "rm_profile", None):
-            config_handler.remove_profile(console, config, args.rm_profile)
-            return
-
-        # Cho phép liệt kê tools mà không cần GOOGLE_API_KEY
-        if getattr(args, "list_tools", False):
-            api.list_tools(console)
-            return
-
-        requires_gemini = _requires_gemini_for_command(config, args)
-
-        # Nếu lệnh yêu cầu Gemini nhưng SDK không khả dụng (ví dụ Python 3.14),
-        # dừng sớm với thông báo rõ ràng.
-        if requires_gemini and not getattr(api, "GEMINI_AVAILABLE", True):
-            console.print(
-                "[bold red]Lệnh này yêu cầu Gemini, nhưng Gemini SDK hiện không hoạt động trên phiên bản Python này "
-                "(có thể do Python 3.14). Hãy dùng model HTTP (deepseek-/groq-/OpenRouter) hoặc chạy Termi trên Python 3.11/3.12.[/bold red]"
-            )
-            return
-
-        keys = api.initialize_api_keys()
-
-        if not keys and requires_gemini:
-            console.print(i18n.tr(language, "error_no_api_key"))
-            return
-
-        # Chỉ cấu hình Gemini và in log khi lệnh hiện tại thực sự cần Gemini.
-        if keys and getattr(api, "GEMINI_AVAILABLE", True) and requires_gemini:
-            if len(keys) > 1:
-                console.print(i18n.tr(language, "api_keys_loaded", count=len(keys)))
-
-            api.configure_api(keys[0])
-
-        # --- Xử lý các lệnh tiện ích (thoát ngay sau khi chạy) ---
-        if args.list_models:
-            api.list_models(console)
-            return
-        if args.set_model:
-            config_handler.model_selection_wizard(console, config)
-            return
-        if args.add_persona:
-            config_handler.add_persona(console, config, args.add_persona[0], args.add_persona[1])
-            return
-        if args.list_personas:
-            config_handler.list_personas(console, config)
-            return
-        if args.rm_persona:
-            config_handler.remove_persona(console, config, args.rm_persona)
-            return
-        if args.add_instruct:
-            config_handler.add_instruction(console, config, args.add_instruct)
-            return
-        if args.list_instructs:
-            config_handler.list_instructions(console, config)
-            return
-        if args.rm_instruct is not None:
-            config_handler.remove_instruction(console, config, args.rm_instruct)
-            return
-        if args.git_commit or getattr(args, "git_commit_short", False):
-            utility_handler.generate_git_commit_message(
-                console,
-                args,
-                short=getattr(args, "git_commit_short", False),
-            )
-            return
-        if args.document:
-            utility_handler.document_code_file(console, args)
-            return
-        if args.refactor:
-            utility_handler.refactor_code_file(console, args)
-            return
-
-        # --- Xử lý Agent Mode ---
-        if args.agent:
-            if not args.prompt:
-                console.print(i18n.tr(language, "agent_requires_prompt"))
-                return
-            agent_handler.run_master_agent(console, args)
-            return
-
-        history, should_exit = _handle_history_flow(
-            console, config, language, args, cli_help_text, provided_args
+        cli_app.run_cli(
+            console=console,
+            config=config,
+            language=language,
+            parser=parser,
+            args=args,
+            cli_help_text=cli_help_text,
+            provided_args=provided_args,
+            run_single_turn=_run_single_turn,
+            handle_history_flow=_handle_history_flow,
+            requires_gemini_for_command=_requires_gemini_for_command,
         )
-        if should_exit:
-            return
-
-        # --- Chế độ Chat ---
-        if args.chat or args.topic:
-            # Xây dựng system instruction cho chat
-            system_instruction_str = core_handler.build_system_instruction(config, args)
-
-            model_name = args.model or config.get("default_model")
-
-            # Nếu model là HTTP provider (DeepSeek/Groq/OpenRouter/Ollama), dùng luồng chat riêng qua HTTP API.
-            if _is_http_model_name(model_name):
-                chat_handler.run_chat_mode_deepseek(console, config, args, system_instruction_str)
-            else:
-                chat_session = api.start_chat_session(
-                    model_name, system_instruction_str, history, cli_help_text=cli_help_text
-                )
-                chat_handler.run_chat_mode(chat_session, console, config, args)
-            return
-
-        _run_single_turn(console, config, language, parser, args, cli_help_text, history)
 
     except KeyboardInterrupt:
         console.print(i18n.tr(language, "interrupted_by_user"))
     except Exception as e:
         console.print(i18n.tr(language, "unexpected_startup_error", error=e))
+
 
 if __name__ == "__main__":
     main()

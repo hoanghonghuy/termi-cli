@@ -22,6 +22,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "config_reset_confirm": "Bạn có chắc muốn xóa config hiện tại và khôi phục mặc định? (y/n): ",
         "config_reset_cancelled": "[yellow]Đã hủy thao tác reset config.[/yellow]",
         "config_init_success": "[green]Đã khởi tạo (hoặc tải) config tại '{path}'.[/green]",
+        "gemini_unavailable_for_command": "[bold red]Lệnh này yêu cầu Gemini, nhưng Gemini SDK hiện không hoạt động trên phiên bản Python này (có thể do Python 3.14). Hãy dùng model HTTP (deepseek-/groq-/OpenRouter/Ollama) hoặc chạy Termi trên Python 3.10–3.12 để dùng Gemini đầy đủ.[/bold red]",
 
         # __main__.py & history_handler.py
         "api_keys_loaded": "[dim]\U0001f511 Đã tải {count} API key(s)[/dim]",
@@ -257,6 +258,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "config_reset_confirm": "Are you sure you want to delete the current config and restore defaults? (y/n): ",
         "config_reset_cancelled": "[yellow]Cancelled config reset.[/yellow]",
         "config_init_success": "[green]Initialized (or loaded) config at '{path}'.[/green]",
+        "gemini_unavailable_for_command": "[bold red]This command requires Gemini, but the Gemini SDK is not available in this Python version (for example Python 3.14). Please use an HTTP-only model (deepseek-/groq-/OpenRouter/Ollama) or run Termi on Python 3.10–3.12 to use Gemini features.[/bold red]",
 
         # __main__.py & history_handler.py
         "api_keys_loaded": "[dim]Loaded {count} API key(s)[/dim]",
