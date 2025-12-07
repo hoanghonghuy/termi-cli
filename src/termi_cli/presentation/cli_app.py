@@ -8,7 +8,7 @@ from typing import Any, Callable
 from rich.console import Console
 from rich.markdown import Markdown
 
-from termi_cli import api, i18n, memory, utils
+from termi_cli import api, i18n, memory
 from termi_cli.config import APP_DIR, CONFIG_PATH, load_config
 from termi_cli.handlers import (
     agent_handler,
@@ -16,7 +16,6 @@ from termi_cli.handlers import (
     config_handler,
     core_handler,
     history_handler,
-    mini_agent,
     utility_handler,
 )
 

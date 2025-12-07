@@ -8,10 +8,6 @@ import re
 import importlib.util
 from pathlib import Path
 import logging
-import json
-import urllib.request
-import urllib.error
-from abc import ABC, abstractmethod
 
 try:
     import google.generativeai as genai
@@ -52,7 +48,6 @@ from termi_cli.tools import instruction_tool
 from termi_cli.tools import code_tool
 from termi_cli.prompts import build_enhanced_instruction
 from termi_cli.config import APP_DIR
-from termi_cli.json_utils import JsonPayloadParseError, parse_json_payload
 from termi_cli.infrastructure import http_providers
 
 _current_api_key_index = 0

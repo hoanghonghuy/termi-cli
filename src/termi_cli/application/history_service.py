@@ -6,8 +6,6 @@ Tách logic xử lý history khỏi handlers để handler chỉ còn vai trò I
 from __future__ import annotations
 
 import os
-import json
-import glob
 import logging
 from datetime import datetime
 from typing import Any

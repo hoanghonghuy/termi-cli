@@ -1,17 +1,9 @@
 """
 Module xử lý các tiện ích độc lập như git-commit, document, refactor.
 """
-import os
-import sys
-import re
 import argparse
-import subprocess
 from rich.console import Console
-from rich.markdown import Markdown
 
-from termi_cli import api, utils, i18n
-from termi_cli.config import load_config
-from termi_cli.tools import code_tool
 from termi_cli.application.utility_service import UtilityService
 
 

@@ -57,15 +57,11 @@ except (ImportError, AttributeError):
 from termi_cli import api, utils, cli, memory, i18n
 from termi_cli.presentation import cli_app
 
-from termi_cli.config import load_config, APP_DIR, CONFIG_PATH
+from termi_cli.config import load_config, APP_DIR
 
 from termi_cli.handlers import (
-    agent_handler,
-    chat_handler,
-    config_handler,
     core_handler,
     history_handler,
-    utility_handler,
     mini_agent,
 )
 

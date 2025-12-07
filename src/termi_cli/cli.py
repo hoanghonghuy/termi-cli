@@ -273,6 +273,16 @@ def create_parser(language: str = "vi"):
         ),
     )
     model_group.add_argument(
+        "--mini-agent-off",
+        action="store_true",
+        help=(
+            "Temporarily disable HTTP mini-agent for this session (does not change config.json)."
+            if language == "en"
+            else
+            "Tạm thời tắt mini-agent HTTP cho phiên này (không thay đổi config.json)."
+        ),
+    )
+    model_group.add_argument(
         "--reset-config",
         action="store_true",
         help=(

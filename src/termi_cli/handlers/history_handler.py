@@ -2,21 +2,11 @@
 Module xử lý các tác vụ liên quan đến lịch sử trò chuyện,
 bao gồm hiển thị, tải, tóm tắt và lưu trữ.
 """
-import os
-import json
-import glob
-import argparse
 import logging
-from datetime import datetime
 
 from rich.console import Console
-from rich.markdown import Markdown
-from rich.table import Table
 
-from termi_cli import api, i18n, utils
-from termi_cli.config import load_config, APP_DIR
-from .core_handler import handle_conversation_turn
-from termi_cli.json_utils import JsonPayloadParseError, parse_json_payload
+from termi_cli.config import APP_DIR
 from termi_cli.application.history_service import HistoryService
 
 # --- CONSTANTS ---

@@ -10,7 +10,6 @@ from rich.table import Table
 
 from termi_cli import api, i18n
 from termi_cli.config import save_config
-from termi_cli.handlers import mini_agent
 from termi_cli.application.config_service import ConfigService
 
 
