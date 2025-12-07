@@ -741,6 +741,29 @@ class ConfigService:
 
         console.print(i18n.tr(language, "config_profile_applied", name=name))
 
+    def set_language(self, console: Console, config: dict, language_code: str) -> None:
+        current_lang = config.get("language", "vi")
+
+        if language_code not in ("vi", "en"):
+            console.print(
+                i18n.tr(
+                    current_lang,
+                    "config_invalid_language",
+                    language=language_code,
+                )
+            )
+            return
+
+        config["language"] = language_code
+        self._repository.save(config)
+        console.print(
+            i18n.tr(
+                language_code,
+                "config_language_set_success",
+                language=language_code,
+            )
+        )
+
     # --- Diagnostics ---
 
     def show_diagnostics(self, console: Console, config: dict) -> None:

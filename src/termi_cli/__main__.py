@@ -437,6 +437,24 @@ def _preprocess_subcommands(argv):
     return argv
 
 
+def _extract_language_from_argv(argv, default_language: str) -> str:
+    """Rút trích language override (--lang/--language) từ argv trước khi tạo parser."""
+    language = default_language
+    for i, token in enumerate(argv):
+        value = None
+        if token.startswith("--lang="):
+            value = token.split("=", 1)[1]
+        elif token.startswith("--language="):
+            value = token.split("=", 1)[1]
+        elif token in ("--lang", "--language"):
+            if i + 1 < len(argv):
+                value = argv[i + 1]
+        if value in ("vi", "en"):
+            language = value
+            break
+    return language
+
+
 def main(provided_args=None):
     """Hàm chính điều phối toàn bộ ứng dụng."""
     load_dotenv()
@@ -446,17 +464,21 @@ def main(provided_args=None):
     config = load_config()
     language = config.get("language", "vi")
 
-    parser = cli.create_parser()
-
     try:
         # Nếu tests truyền sẵn một argparse.Namespace thì dùng trực tiếp
         # để không phá vỡ hành vi cũ.
         if isinstance(provided_args, argparse.Namespace):
+            ns_language = getattr(provided_args, "language", None)
+            if ns_language in ("vi", "en"):
+                language = ns_language
+            parser = cli.create_parser(language=language)
             args = provided_args
         else:
             raw_args = provided_args if provided_args is not None else sys.argv[1:]
             # Hỗ trợ cú pháp ngắn `termi chat` / `termi agent` cho người dùng cuối.
             raw_args = _preprocess_subcommands(list(raw_args))
+            language = _extract_language_from_argv(raw_args, language)
+            parser = cli.create_parser(language=language)
             args = parser.parse_args(raw_args)
         cli_help_text = parser.format_help()
         args.cli_help_text = cli_help_text

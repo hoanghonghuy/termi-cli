@@ -105,7 +105,7 @@ termi --agent -m ollama/qwen3:8b "Refactor this module"
 ## Language & i18n
 
 - Default UI language is Vietnamese (`"language": "vi"`).
-- Per-run override:
+- Per-run override (temporary, does not touch `config.json`):
 
 ```bash
 termi --lang en "Explain this code"
@@ -116,6 +116,15 @@ Supported values:
 - `en` – English UI messages  
 
 The same setting is reused across core CLI, history browser, chat mode, and Agent panels.
+
+To **persistently** change the default UI language for all future runs, use:
+
+```bash
+termi --set-lang en
+termi --set-lang vi
+```
+
+This updates the `language` field in `config.json` under `APP_DIR` / `TERMI_CLI_HOME`, so subsequent commands (including `termi --help`) will use that language by default. Use `--lang` when you only need a one-off override for a single command.
 
 ## Runtime data, reset & troubleshooting
 

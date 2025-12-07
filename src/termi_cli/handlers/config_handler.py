@@ -506,6 +506,11 @@ def show_diagnostics(console: Console, config: dict):
     return service.show_diagnostics(console, config)
 
 
+def set_language(console: Console, config: dict, language_code: str):
+    service = ConfigService()
+    return service.set_language(console, config, language_code)
+
+
 def model_selection_wizard(console: Console, config: dict):
     """Wrapper mỏng gọi ConfigService.model_selection_wizard.
 

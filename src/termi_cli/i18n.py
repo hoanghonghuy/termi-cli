@@ -157,6 +157,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "config_profile_not_found": "[bold red]Lỗi: Không tìm thấy profile có tên '{name}'.[/bold red]",
         "config_profile_removed": "[bold green]\u2705 Đã xóa profile [cyan]'{name}'[/cyan].[/bold green]",
         "config_profile_applied": "[green]Đã áp dụng profile [cyan]'{name}'[/cyan] cho phiên hiện tại.[/green]",
+        "config_language_set_success": "[green]Đã đặt ngôn ngữ mặc định của Termi thành '{language}'.[/green]",
+        "config_invalid_language": "[bold red]Ngôn ngữ '{language}' không được hỗ trợ. Chỉ hỗ trợ 'vi' hoặc 'en'.[/bold red]",
 
         # Utils.execute_suggested_commands
         "utils_ai_suggested_commands": "\n[bold yellow]AI đã đề xuất {count} lệnh thực thi:[/bold yellow]",
@@ -390,6 +392,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "config_profile_not_found": "[bold red]Error: No profile found with name '{name}'.[/bold red]",
         "config_profile_removed": "[bold green]\u2705 Removed profile [cyan]'{name}'[/cyan].[/bold green]",
         "config_profile_applied": "[green]Applied profile [cyan]'{name}'[/cyan] for this session.[/green]",
+        "config_language_set_success": "[green]Set Termi default language to '{language}'.[/green]",
+        "config_invalid_language": "[bold red]Language '{language}' is not supported. Only 'vi' or 'en' are allowed.[/bold red]",
 
         # Utils.execute_suggested_commands
         "utils_ai_suggested_commands": "\n[bold yellow]AI suggested {count} command(s):[/bold yellow]",

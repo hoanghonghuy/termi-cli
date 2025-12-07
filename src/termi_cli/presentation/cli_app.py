@@ -175,6 +175,11 @@ def run_cli(
         return
 
     # Quản lý profile cấu hình nhanh
+    if getattr(args, "set_lang", None):
+        config_handler.set_language(console, config, args.set_lang)
+        return
+
+    # Quản lý profile cấu hình nhanh
     if getattr(args, "save_profile", None):
         config_handler.save_profile(console, config, args.save_profile)
         return
