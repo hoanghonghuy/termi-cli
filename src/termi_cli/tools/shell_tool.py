@@ -19,10 +19,10 @@ SAFE_COMMANDS = {
 }
 
 def execute_command(command: str, skip_confirm: bool = False) -> str:
-    """
-    Thực thi một lệnh shell an toàn từ danh sách trắng và trả về kết quả.
+    """Execute a whitelisted shell command and return its output.
+
     Args:
-        command (str): Lệnh cần thực thi (ví dụ: 'git status', 'pip install -r requirements.txt').
+        command (str): Command to run (for example 'git status', 'pip install -r requirements.txt').
     """
     logger.info("--- TOOL: Yêu cầu thực thi lệnh: '%s' ---", command)
 

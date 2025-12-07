@@ -37,8 +37,9 @@ def refactor_code(file_path: str) -> str:
     model_name = config.get("code_model") or config.get("default_model")
     
     prompt = (
-        "Với vai trò là một kiến trúc sư phần mềm chuyên nghiệp, hãy tái cấu trúc (refactor) đoạn code dưới đây để nó sạch hơn, hiệu quả hơn và dễ bảo trì hơn.\n"
-        "Chỉ trả về phần code đã được cập nhật trong một khối mã duy nhất, không giải thích gì thêm.\n\n"
+        "You are a senior software architect. Refactor the following code so that it is cleaner, "
+        "more efficient, and easier to maintain.\n"
+        "Return ONLY the updated code inside a single code block and do not include any explanation.\n\n"
         f"```python\n{code_content}\n```"
     )
     
@@ -75,9 +76,10 @@ def document_code(file_path: str) -> str:
     model_name = config.get("code_model") or config.get("default_model")
     
     prompt = (
-        "Với vai trò là một lập trình viên kinh nghiệm, hãy viết tài liệu (docstrings cho hàm/class và comment cho các logic phức tạp) cho đoạn code dưới đây.\n"
-        "Hãy tuân thủ các chuẩn viết docstring phổ biến (ví dụ: Google Style hoặc reStructuredText cho Python).\n"
-        "Chỉ trả về phần code đã được cập nhật trong một khối mã duy nhất, không giải thích gì thêm.\n\n"
+        "You are an experienced software engineer. Add documentation to the following code: "
+        "docstrings for functions/classes and comments for complex logic.\n"
+        "Follow common Python docstring conventions (for example Google style or reStructuredText for Python).\n"
+        "Return ONLY the updated code inside a single code block and do not include any explanation.\n\n"
         f"```python\n{code_content}\n```"
     )
 

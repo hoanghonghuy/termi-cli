@@ -4,7 +4,7 @@ _APP_START_TS = time.time()
 
 
 def get_cli_uptime() -> str:
-    """Trả về thời gian Termi CLI hiện tại đã chạy (tính từ lúc tiến trình được khởi động)."""
+    """Return how long the current Termi CLI process has been running."""
     elapsed = int(time.time() - _APP_START_TS)
     days, rem = divmod(elapsed, 86400)
     hours, rem = divmod(rem, 3600)

@@ -217,7 +217,11 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
     user_intent = args.prompt or ""
     
     if piped_input:
-        prompt_text = f"Dựa vào nội dung được cung cấp sau đây:\n{piped_input}\n\n{user_intent}"
+        prompt_text = (
+            "Using the following piped input as additional context:\n"
+            f"{piped_input}\n\n"
+            f"{user_intent}"
+        )
     else:
         prompt_text = user_intent
 
@@ -230,7 +234,10 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
     if args.read_dir:
         console.print(i18n.tr(language, "reading_directory_context"))
         context = utils.get_directory_context()
-        prompt_text = f"Dựa vào ngữ cảnh các file dưới đây:\n{context}\n\n{prompt_text}"
+        prompt_text = (
+            "Using the following directory context as additional input:\n"
+            f"{context}\n\n{prompt_text}"
+        )
     
     if args.image:
         if Image is None:

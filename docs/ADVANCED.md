@@ -40,7 +40,7 @@ python -m ruff check src test tests
 
 - `--git-commit-short`  
   Generate a short, single-line Conventional Commit subject based on staged changes and propose a `git commit -m` command.
-- **Lint reminder:** khi phát triển các tiện ích mới, luôn chạy `python -m ruff check src test tests` (hoặc ít nhất các thư mục liên quan) trước khi mở PR để đảm bảo phong cách thống nhất.
+- **Lint reminder:** when developing new utilities, always run `python -m ruff check src test tests` (or at least the relevant folders) before opening a PR to keep the code style consistent.
 
 - `--list-tools`  
   List all available tools (core + plugin) that the Agent can call.
@@ -175,7 +175,7 @@ Termi routes all single-turn text generation through `api.generate_text(model_na
     such as `_resilient_deepseek_api_call`, `_resilient_groq_api_call`, `_resilient_openrouter_api_call`, `_ollama_chat_completions`, and `_ollama_cloud_chat_completions`.
   - A simple registry `_PROVIDER_REGISTRY: dict[str, BaseProvider]` maps provider kinds to their instances.
 - `generate_text` calls the appropriate `BaseProvider.generate(...)` for HTTP providers, and keeps the original Gemini SDK path for `provider_kind == "gemini"`.
-- **JSON hardening:** mọi response HTTP đều đi qua helper `parse_json_payload`, helper này sanitize dấu phẩy thừa trước `}`/`]` rồi mới `json.loads`, giúp tránh crash khi provider trả JSON sai chuẩn.
+- **JSON hardening:** every HTTP response goes through the `parse_json_payload` helper, which sanitizes trailing commas before `}`/`]` and then calls `json.loads`, reducing crashes when providers return slightly malformed JSON.
 
 To add a new HTTP provider, you typically:
 
@@ -185,11 +185,11 @@ To add a new HTTP provider, you typically:
 
 ### HTTP metrics & diagnostics
 
-- `api.generate_text` duy trì một bộ đếm nhẹ `_HTTP_METRICS` cho các provider HTTP:
-  - `http_calls_total`: số lần gọi HTTP thực sự sau khi miss cache.
-  - `http_calls_by_provider`: phân rã theo `deepseek`, `groq`, `openrouter`, `ollama`, `ollama_cloud`.
-  - `http_cache_hits_total`: số lần cache trả về kết quả, tránh phải gọi HTTP.
-- Các số liệu này có thể truy vấn qua `api.get_http_metrics()` (dùng trong diagnostics hoặc tooling nội bộ) và được log ở mức DEBUG, giúp theo dõi hiệu quả cache cũng như tần suất gọi từng provider mà không ảnh hưởng tới API công khai.
+- `api.generate_text` maintains a lightweight `_HTTP_METRICS` counter for HTTP providers:
+  - `http_calls_total`: number of real HTTP calls after cache misses.
+  - `http_calls_by_provider`: breakdown by `deepseek`, `groq`, `openrouter`, `ollama`, `ollama_cloud`.
+  - `http_cache_hits_total`: number of times a cached response was used instead of calling the HTTP API.
+- These metrics can be queried via `api.get_http_metrics()` (for diagnostics or internal tooling) and are logged at DEBUG level, so you can track cache efficiency and per‑provider usage without changing the public API.
 
 ## Agent modes and tuning
 
@@ -312,7 +312,7 @@ By default, Termi ships with rules for:
 - **Current time / date**: mapped to `get_current_time`.
 - **CLI uptime**: mapped to `get_cli_uptime`.
 - **Weather queries** (both Vietnamese and English patterns, including examples like `weather in HCMC tomorrow`): mapped to `search_web`.
-- **FX & crypto prices** (e.g. `tỷ giá usd`, `usd to vnd`, `btc price`, `eth price`): also mapped to `search_web`.
+- **FX & crypto prices** (for example, `usd to vnd`, `btc price`, `eth price`): also mapped to `search_web`.
 
 You can customize or extend these rules by editing `mini_agent.rules` in your `config.json`:
 
@@ -324,21 +324,21 @@ The same `mini_agent` configuration is also summarized by the `termi --diagnosti
 
 ## Ollama local vs. Ollama Cloud
 
-Termi nhận diện hai dạng model Ollama:
+Termi distinguishes two kinds of Ollama models:
 
-1. **Local daemon (prefix `ollama/...`)** – ví dụ `ollama/qwen3:8b`.
-   - Gọi qua OpenAI-compatible endpoint `http://localhost:11434/v1/chat/completions`.
-   - Có thể đổi host bằng biến môi trường `OLLAMA_BASE_URL`.
-   - Không cần API key.
+1. **Local daemon (prefix `ollama/...`)** – for example `ollama/qwen3:8b`.
+   - Uses the OpenAI‑compatible endpoint `http://localhost:11434/v1/chat/completions`.
+   - You can change the host with the `OLLAMA_BASE_URL` environment variable.
+   - Does not require an API key.
 
-2. **Ollama Cloud (prefix `ollama-cloud/...`)** – ví dụ `ollama-cloud/qwen3-coder:480b-cloud`.
-   - Gọi REST API `https://ollama.com/api/chat` (có thể override bằng `OLLAMA_CLOUD_BASE_URL`).
-   - Cần thiết lập `OLLAMA_API_KEY` (tạo tại [https://ollama.com/settings/keys](https://ollama.com/settings/keys)).
-   - Tương thích với cùng cú pháp prompt như local daemon.
+2. **Ollama Cloud (prefix `ollama-cloud/...`)** – for example `ollama-cloud/qwen3-coder:480b-cloud`.
+   - Calls the REST API `https://ollama.com/api/chat` (override with `OLLAMA_CLOUD_BASE_URL` if needed).
+   - Requires `OLLAMA_API_KEY` (create it at [https://ollama.com/settings/keys](https://ollama.com/settings/keys)).
+   - Uses the same prompt shape as the local daemon.
 
-### Cấu hình
+### Configuration
 
-Trong `config.json`, bạn có thể đặt `default_model`, `code_model`, `commit_model`… thành `ollama/<tag>` (local) hoặc `ollama-cloud/<tag>` (cloud). Ví dụ:
+In `config.json`, you can set `default_model`, `code_model`, `commit_model`, etc. to either `ollama/<tag>` (local) or `ollama-cloud/<tag>` (cloud). For example:
 
 ```json
 {
@@ -349,11 +349,11 @@ Trong `config.json`, bạn có thể đặt `default_model`, `code_model`, `comm
 
 ### Diagnostics & mini-agent
 
-`termi --diagnostics` sẽ hiển thị rõ provider "⚫ Ollama" (local) hoặc "⚫☁️ Ollama Cloud" và liệt kê các cảnh báo mini-agent (nếu rule/tool không hợp lệ).
+`termi --diagnostics` explicitly shows whether the provider is "⚫ Ollama" (local) or "⚫☁️ Ollama Cloud" and lists mini‑agent warnings (if rules or tools are misconfigured).
 
-### Khi nào dùng Cloud?
+### When to use Cloud?
 
-- Bạn muốn chạy những model lớn (như `qwen3-coder:480b-cloud`) mà máy local không đủ tài nguyên.
-- Cần sẵn sàng ngay không phải tự pull model.
+- You want to run very large models (such as `qwen3-coder:480b-cloud`) that are impractical to host locally.
+- You need models to be immediately available without pulling them to your machine.
 
-Nhược điểm: cần internet và phụ thuộc quota tài khoản Ollama Cloud.
+The main downside is that Ollama Cloud requires internet access and depends on your Ollama Cloud account quota.

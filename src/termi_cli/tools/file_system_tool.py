@@ -21,13 +21,13 @@ IGNORE_PATTERNS = [
 ]
 
 def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False, read_content: bool = False) -> str:
-    """
-    Liệt kê các file và thư mục. Nếu read_content=True, sẽ đọc và trả về nội dung của các file tìm thấy.
+    """List files and directories, optionally reading file contents.
+
     Args:
-        directory (str): Thư mục cần liệt kê.
-        pattern (str): Mẫu để lọc file (ví dụ: '*.py').
-        recursive (bool): Nếu True, sẽ tìm kiếm trong các thư mục con.
-        read_content (bool): Nếu True, sẽ đọc nội dung của các file tìm thấy.
+        directory (str): Base directory to list.
+        pattern (str): Glob pattern to filter files (for example '*.py').
+        recursive (bool): If True, search recursively in subdirectories.
+        read_content (bool): If True, read and return contents of matching files instead of only listing paths.
     """
     logger.info(
         "--- TOOL: Liệt kê file trong '%s' với mẫu '%s' (Read: %s) ---",
@@ -77,9 +77,7 @@ def list_files(directory: str = ".", pattern: str = "*", recursive: bool = False
         return f"Lỗi khi liệt kê file: {e}"
 
 def read_file(path: str) -> str:
-    """
-    Đọc và trả về toàn bộ nội dung của một file văn bản.
-    """
+    """Read and return the full contents of a text file."""
     logger.info("--- TOOL: Đọc file '%s' ---", path)
 
     try:
@@ -92,8 +90,9 @@ def read_file(path: str) -> str:
         return f"Lỗi khi đọc file: {e}"
 
 def write_file(path: str, content: str) -> str:
-    """
-    Ghi nội dung vào một file. Sẽ hỏi người dùng xác nhận trước khi thực hiện.
+    """Request writing content to a file.
+
+    The CLI will ask the user for confirmation before actually writing the file.
     """
     logger.info("--- TOOL: Yêu cầu ghi file '%s' ---", path)
 
@@ -107,10 +106,10 @@ def write_file(path: str, content: str) -> str:
         return f"Lỗi khi chuẩn bị ghi file: {e}"
     
 def create_directory(path: str) -> str:
-    """
-    Tạo một hoặc nhiều thư mục theo đường dẫn được chỉ định.
+    """Create one or more directories at the given path.
+
     Args:
-        path (str): Đường dẫn thư mục cần tạo (ví dụ: 'src/components').
+        path (str): Directory path to create (for example 'src/components').
     """
     logger.info("--- TOOL: Đang tạo thư mục '%s' ---", path)
 

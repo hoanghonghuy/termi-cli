@@ -1,9 +1,9 @@
 from termi_cli.config import load_config, save_config
 
 def save_instruction(instruction: str) -> str:
-    """
-    Lưu một chỉ dẫn tùy chỉnh lâu dài vào file config.json.
-    AI nên sử dụng công cụ này khi người dùng yêu cầu ghi nhớ một quy tắc.
+    """Persist a long‑lived custom instruction into config.json.
+
+    The AI should use this tool when the user asks to remember a rule for future sessions.
     """
     print(f"--- TOOL: Đang lưu chỉ dẫn tùy chỉnh: '{instruction}' ---")
     try:

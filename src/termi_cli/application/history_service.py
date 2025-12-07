@@ -237,10 +237,11 @@ class HistoryService:
             return
 
         prompt = (
-            "Dưới đây là một cuộc trò chuyện đã được lưu. "
-            "Hãy đọc và tóm tắt lại nội dung chính của nó trong vài gạch đầu dòng ngắn gọn.\n\n"
-            f"--- NỘI DUNG CUỘC TRÒ CHUYỆN ---\n{history_text}---\n\n"
-            "Tóm tắt của bạn:"
+            "Below is a saved conversation. "
+            "Read it carefully and summarize the main points in a few short bullet points. "
+            "Write the summary in the same language as the original conversation.\n\n"
+            f"--- CONVERSATION CONTENT ---\n{history_text}---\n\n"
+            "Your summary:"
         )
 
         model_name = config.get("default_model")
