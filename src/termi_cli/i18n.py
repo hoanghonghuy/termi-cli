@@ -249,6 +249,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
   [green]/template[/green] - Quản lý templates
   [green]/theme[/green]    - Đổi theme
   [green]/memory[/green]   - Quản lý ký ức
+  [green]/plugins[/green]  - Quản lý plugins
   [green]/rag[/green]      - Bật/tắt RAG
   [green]/clear[/green]    - Xóa lịch sử
   [green]/export[/green]   - Xuất chat
@@ -415,6 +416,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
   [green]/template[/green] - Manage templates
   [green]/theme[/green]    - Change theme
   [green]/memory[/green]   - Manage memory
+  [green]/plugins[/green]  - Manage plugins
   [green]/rag[/green]      - Toggle RAG
   [green]/clear[/green]    - Clear history
   [green]/export[/green]   - Export chat

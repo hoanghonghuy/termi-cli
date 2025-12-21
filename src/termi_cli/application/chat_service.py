@@ -407,7 +407,11 @@ class ChatService:
                             console.print(i18n.tr(language, "alias_empty"))
                     elif len(parts) >= 3 and parts[1] == "add":
                         name = parts[2]
-                        cmd = " ".join(parts[3:]) if len(parts) > 3 else ""
+                        if len(parts) <= 3:
+                            console.print("[yellow]Error: Alias command cannot be empty.[/yellow]")
+                            console.print(i18n.tr(language, "alias_usage"))
+                            continue
+                        cmd = " ".join(parts[3:])
                         alias_manager.add_alias(name, cmd)
                         console.print(i18n.tr(language, "alias_added", name=name, cmd=cmd))
                     elif len(parts) == 3 and parts[1] == "remove":
@@ -546,9 +550,9 @@ class ChatService:
                          new_tools = api._load_plugin_tools() # This calls plugin_manager.load_plugins
                          count = 0
                          for name, func in new_tools.items():
-                             if name not in api.AVAILABLE_TOOLS:
-                                 api.AVAILABLE_TOOLS[name] = func
-                                 count += 1
+                             # Allow override during manual reload
+                             api.AVAILABLE_TOOLS[name] = func
+                             count += 1
                          
                          console.print("[bold cyan]Plugins System:[/bold cyan]")
                          from termi_cli.application import plugin_manager
