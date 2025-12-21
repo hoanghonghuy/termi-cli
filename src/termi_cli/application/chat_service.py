@@ -544,7 +544,7 @@ class ChatService:
 
                 # Plugin management
                 if prompt.strip().lower().startswith("/plugins"):
-                     from termi_cli import api
+                     # Reload plugins
                      # Reload plugins
                      try:
                          # Hacky re-load: update AVAILABLE_TOOLS directly
