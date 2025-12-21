@@ -244,7 +244,11 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
     # RAG context injection when --rag flag is used
     if getattr(args, "rag", False) and user_intent:
         from termi_cli.rag import codebase_query
-        index_name = getattr(args, "rag_index", "default")
+        rag_index_arg = getattr(args, "rag_index", "default")
+        if rag_index_arg == "default":
+            index_name = codebase_query.get_project_index_name()
+        else:
+            index_name = rag_index_arg
         if codebase_query.is_index_available(index_name):
             rag_context = codebase_query.get_codebase_context(user_intent, index_name)
             if rag_context:

@@ -198,3 +198,36 @@ def is_index_available(index_name: str = "default") -> bool:
         return engine.collection.count() > 0
     except Exception:
         return False
+
+
+def get_project_index_name(directory: str | None = None) -> str:
+    """Get an index name based on the project directory.
+    
+    Uses the directory name (sanitized) as the index name.
+    Falls back to 'default' if unable to determine.
+    
+    Args:
+        directory: Directory path (uses cwd if None)
+        
+    Returns:
+        Sanitized index name
+    """
+    import os
+    import re
+    from pathlib import Path
+    
+    if directory is None:
+        directory = os.getcwd()
+    
+    path = Path(directory).resolve()
+    name = path.name
+    
+    # Sanitize: only alphanumeric, dash, underscore
+    name = re.sub(r"[^a-zA-Z0-9_-]", "_", name)
+    name = name.strip("_").lower()
+    
+    if not name or name in (".", ".."):
+        return "default"
+    
+    return name
+

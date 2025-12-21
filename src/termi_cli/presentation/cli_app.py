@@ -193,10 +193,16 @@ def run_cli(
 
     # --- Codebase RAG commands (không cần API key) ---
     if getattr(args, "index_codebase", None) is not None:
-        from termi_cli.rag import codebase_indexer
+        from termi_cli.rag import codebase_indexer, codebase_query
         directory = args.index_codebase or "."
-        index_name = getattr(args, "rag_index", "default")
+        # Auto-detect project name if not specified
+        rag_index_arg = getattr(args, "rag_index", "default")
+        if rag_index_arg == "default":
+            index_name = codebase_query.get_project_index_name(directory)
+        else:
+            index_name = rag_index_arg
         console.print(i18n.tr(language, "rag_indexing_start", directory=directory))
+        console.print(f"[dim]Index name: {index_name}[/dim]")
         try:
             force = getattr(args, "force_reindex", False)
             stats = codebase_indexer.index_codebase(directory, index_name, force=force)
@@ -216,8 +222,12 @@ def run_cli(
         return
 
     if getattr(args, "clear_index", False):
-        from termi_cli.rag import codebase_indexer
-        index_name = getattr(args, "rag_index", "default")
+        from termi_cli.rag import codebase_indexer, codebase_query
+        rag_index_arg = getattr(args, "rag_index", "default")
+        if rag_index_arg == "default":
+            index_name = codebase_query.get_project_index_name()
+        else:
+            index_name = rag_index_arg
         
         # Get current stats for confirmation
         stats = codebase_indexer.get_index_stats(index_name)
@@ -237,8 +247,12 @@ def run_cli(
         return
 
     if getattr(args, "index_stats", False):
-        from termi_cli.rag import codebase_indexer
-        index_name = getattr(args, "rag_index", "default")
+        from termi_cli.rag import codebase_indexer, codebase_query
+        rag_index_arg = getattr(args, "rag_index", "default")
+        if rag_index_arg == "default":
+            index_name = codebase_query.get_project_index_name()
+        else:
+            index_name = rag_index_arg
         stats = codebase_indexer.get_index_stats(index_name)
         if stats.get("available", False):
             console.print(i18n.tr(

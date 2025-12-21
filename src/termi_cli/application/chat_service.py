@@ -377,6 +377,48 @@ class ChatService:
                     console.print(f"[dim]Available tools: {tool_names}[/dim]")
                     continue
 
+                # Help command
+                if prompt.strip().lower() == "/help":
+                    help_text = """[bold cyan]📖 Chat Commands:[/bold cyan]
+  [green]/help[/green]     - Show this help
+  [green]/tools[/green]    - List available tools
+  [green]/rag[/green]      - Toggle RAG mode on/off
+  [green]/image[/green] path - Attach an image
+  [green]/file[/green] path  - Attach a text file
+  [green]/voice[/green]    - Record voice input (requires sounddevice)
+  [green]exit[/green]      - Exit chat"""
+                    console.print(help_text)
+                    continue
+
+                # Voice input command
+                if prompt.strip().lower() == "/voice":
+                    try:
+                        from termi_cli.voice import stt
+                        if not stt.is_recording_available():
+                            console.print("[yellow]Voice recording not available. Install: pip install sounddevice[/yellow]")
+                            continue
+                        
+                        console.print(i18n.tr(language, "voice_listening"))
+                        recorder = stt.AudioRecorder()
+                        audio_data = recorder.record_until_silence()
+                        
+                        if audio_data:
+                            console.print(i18n.tr(language, "voice_transcribing"))
+                            engine = stt.get_stt_engine()
+                            text = engine.transcribe(audio_data)
+                            if text and not text.startswith("[Error"):
+                                console.print(i18n.tr(language, "voice_you_said", text=text))
+                                prompt = text  # Use transcribed text as prompt
+                            else:
+                                console.print(f"[yellow]{text}[/yellow]")
+                                continue
+                        else:
+                            console.print("[yellow]No audio recorded.[/yellow]")
+                            continue
+                    except Exception as e:
+                        console.print(i18n.tr(language, "voice_error", error=str(e)))
+                        continue
+
                 if prompt.lower().strip() in ["exit", "quit", "q"]:
                     break
                 
@@ -414,7 +456,11 @@ class ChatService:
                 # RAG context injection when --rag flag is enabled
                 if getattr(args, "rag", False) and user_text_part:
                     from termi_cli.rag import codebase_query
-                    index_name = getattr(args, "rag_index", "default")
+                    rag_index_arg = getattr(args, "rag_index", "default")
+                    if rag_index_arg == "default":
+                        index_name = codebase_query.get_project_index_name()
+                    else:
+                        index_name = rag_index_arg
                     if codebase_query.is_index_available(index_name):
                         rag_context = codebase_query.get_codebase_context(user_text_part, index_name)
                         if rag_context:
