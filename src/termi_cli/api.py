@@ -47,6 +47,7 @@ from termi_cli.tools import web_search, database, calendar_tool, email_tool, fil
 from termi_cli.tools import instruction_tool
 from termi_cli.tools import code_tool
 from termi_cli.tools import git_advanced_tool
+from termi_cli.tools import web_scraper_tool
 from termi_cli.prompts import build_enhanced_instruction
 from termi_cli.config import APP_DIR
 from termi_cli.infrastructure import http_providers
@@ -194,6 +195,9 @@ AVAILABLE_TOOLS = {
     git_advanced_tool.generate_changelog.__name__: git_advanced_tool.generate_changelog,
     git_advanced_tool.get_pr_diff.__name__: git_advanced_tool.get_pr_diff,
     git_advanced_tool.get_branch_info.__name__: git_advanced_tool.get_branch_info,
+    # Web scraper tools
+    web_scraper_tool.scrape_url.__name__: web_scraper_tool.scrape_url,
+    web_scraper_tool.get_page_links.__name__: web_scraper_tool.get_page_links,
 }
 
 # Hợp nhất plugin tools (nếu có), ưu tiên giữ nguyên core tools khi trùng tên

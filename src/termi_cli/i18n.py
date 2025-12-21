@@ -246,12 +246,30 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_help_content": """  [green]/help[/green]     - Hiển thị trợ giúp này
   [green]/tools[/green]    - Liệt kê tools khả dụng
   [green]/rag[/green]      - Bật/tắt chế độ RAG
+  [green]/clear[/green]    - Xóa lịch sử chat
+  [green]/export[/green]   - Xuất cuộc hội thoại (JSON/MD)
+  [green]/model[/green]    - Xem/đổi model
+  [green]/save[/green]     - Lưu phiên hiện tại
+  [green]/load[/green]     - Tải phiên đã lưu
   [green]/image[/green] path - Đính kèm ảnh
   [green]/file[/green] path  - Đính kèm file text
-  [green]/voice[/green]    - Thu âm giọng nói (cần sounddevice)
+  [green]/voice[/green]    - Thu âm giọng nói
   [green]exit[/green]      - Thoát chat""",
         "chat_voice_not_available": "[yellow]Thu âm không khả dụng. Cài: pip install sounddevice[/yellow]",
         "chat_no_audio": "[yellow]Không thu được âm thanh.[/yellow]",
+        
+        # Chat extended commands
+        "chat_cleared": "[green]Đã xóa lịch sử chat.[/green]",
+        "chat_exported": "[green]Đã xuất cuộc hội thoại ra '{path}'.[/green]",
+        "chat_export_error": "[red]Lỗi xuất: {error}[/red]",
+        "chat_model_switched": "[green]Đã chuyển sang model: {model}[/green]",
+        "chat_model_current": "[dim]Model hiện tại: {model}[/dim]",
+        "chat_session_saved": "[green]Đã lưu phiên '{name}'.[/green]",
+        "chat_session_loaded": "[green]Đã tải phiên '{name}' ({count} tin nhắn).[/green]",
+        "chat_session_not_found": "[yellow]Không tìm thấy phiên '{name}'.[/yellow]",
+        "chat_session_list_title": "[bold cyan]\ud83d\udcc2 Phiên đã lưu:[/bold cyan]",
+        "chat_no_sessions": "[dim]Chưa có phiên nào được lưu.[/dim]",
+        "chat_speaking_response": "[dim]Đang đọc phản hồi...[/dim]",
 
         # Agent handler
         "agent_project_name_default": "Không có tên",
@@ -355,12 +373,30 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_help_content": """  [green]/help[/green]     - Show this help
   [green]/tools[/green]    - List available tools
   [green]/rag[/green]      - Toggle RAG mode on/off
+  [green]/clear[/green]    - Clear chat history
+  [green]/export[/green]   - Export conversation (JSON/MD)
+  [green]/model[/green]    - View/switch model
+  [green]/save[/green]     - Save current session
+  [green]/load[/green]     - Load saved session
   [green]/image[/green] path - Attach an image
   [green]/file[/green] path  - Attach a text file
-  [green]/voice[/green]    - Record voice input (requires sounddevice)
+  [green]/voice[/green]    - Record voice input
   [green]exit[/green]      - Exit chat""",
         "chat_voice_not_available": "[yellow]Voice recording not available. Install: pip install sounddevice[/yellow]",
         "chat_no_audio": "[yellow]No audio recorded.[/yellow]",
+        
+        # Chat extended commands
+        "chat_cleared": "[green]Chat history cleared.[/green]",
+        "chat_exported": "[green]Conversation exported to '{path}'.[/green]",
+        "chat_export_error": "[red]Export error: {error}[/red]",
+        "chat_model_switched": "[green]Switched to model: {model}[/green]",
+        "chat_model_current": "[dim]Current model: {model}[/dim]",
+        "chat_session_saved": "[green]Session '{name}' saved.[/green]",
+        "chat_session_loaded": "[green]Session '{name}' loaded ({count} messages).[/green]",
+        "chat_session_not_found": "[yellow]Session '{name}' not found.[/yellow]",
+        "chat_session_list_title": "[bold cyan]\ud83d\udcc2 Saved sessions:[/bold cyan]",
+        "chat_no_sessions": "[dim]No saved sessions.[/dim]",
+        "chat_speaking_response": "[dim]Speaking response...[/dim]",
 
         "memory_reset_confirm": "Are you sure you want to delete the long-term memory database (memory_db)? (y/n): ",
         "memory_reset_cancelled": "[yellow]Cancelled memory reset.[/yellow]",

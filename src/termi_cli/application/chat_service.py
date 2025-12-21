@@ -383,6 +383,105 @@ class ChatService:
                     console.print(i18n.tr(language, "chat_help_content"))
                     continue
 
+                # Clear chat history
+                if prompt.strip().lower() == "/clear":
+                    messages = []
+                    console.print(i18n.tr(language, "chat_cleared"))
+                    continue
+
+                # Export conversation
+                if prompt.strip().lower().startswith("/export"):
+                    try:
+                        import json
+                        from pathlib import Path
+                        parts = prompt.strip().split(maxsplit=1)
+                        export_name = parts[1] if len(parts) > 1 else f"chat_export_{int(__import__('time').time())}"
+                        if not export_name.endswith((".json", ".md")):
+                            export_name += ".json"
+                        export_path = Path.cwd() / export_name
+                        
+                        if export_name.endswith(".md"):
+                            # Export as markdown
+                            with open(export_path, "w", encoding="utf-8") as f:
+                                f.write("# Chat Export\n\n")
+                                for msg in messages:
+                                    role = msg.get("role", "user").upper()
+                                    content = msg.get("content", "")
+                                    if isinstance(content, list):
+                                        content = "[multi-modal content]"
+                                    f.write(f"## {role}\n{content}\n\n")
+                        else:
+                            # Export as JSON
+                            with open(export_path, "w", encoding="utf-8") as f:
+                                json.dump(messages, f, ensure_ascii=False, indent=2)
+                        
+                        console.print(i18n.tr(language, "chat_exported", path=str(export_path)))
+                    except Exception as e:
+                        console.print(i18n.tr(language, "chat_export_error", error=str(e)))
+                    continue
+
+                # Show/switch model
+                if prompt.strip().lower().startswith("/model"):
+                    parts = prompt.strip().split(maxsplit=1)
+                    if len(parts) == 1:
+                        # Just show current model
+                        console.print(i18n.tr(language, "chat_model_current", model=model_name))
+                    else:
+                        # Switch model
+                        new_model = parts[1].strip()
+                        model_name = new_model
+                        console.print(i18n.tr(language, "chat_model_switched", model=new_model))
+                    continue
+
+                # Save session
+                if prompt.strip().lower().startswith("/save"):
+                    try:
+                        import json
+                        from termi_cli.config import APP_DIR
+                        parts = prompt.strip().split(maxsplit=1)
+                        session_name = parts[1] if len(parts) > 1 else "default"
+                        session_dir = APP_DIR / "chat_sessions"
+                        session_dir.mkdir(exist_ok=True)
+                        session_file = session_dir / f"{session_name}.json"
+                        with open(session_file, "w", encoding="utf-8") as f:
+                            json.dump(messages, f, ensure_ascii=False, indent=2)
+                        console.print(i18n.tr(language, "chat_session_saved", name=session_name))
+                    except Exception as e:
+                        console.print(f"[red]{e}[/red]")
+                    continue
+
+                # Load session
+                if prompt.strip().lower().startswith("/load"):
+                    try:
+                        import json
+                        from termi_cli.config import APP_DIR
+                        parts = prompt.strip().split(maxsplit=1)
+                        if len(parts) == 1:
+                            # List sessions
+                            session_dir = APP_DIR / "chat_sessions"
+                            if session_dir.exists():
+                                sessions = list(session_dir.glob("*.json"))
+                                if sessions:
+                                    console.print(i18n.tr(language, "chat_session_list_title"))
+                                    for s in sessions:
+                                        console.print(f"  - {s.stem}")
+                                else:
+                                    console.print(i18n.tr(language, "chat_no_sessions"))
+                            else:
+                                console.print(i18n.tr(language, "chat_no_sessions"))
+                        else:
+                            session_name = parts[1].strip()
+                            session_file = APP_DIR / "chat_sessions" / f"{session_name}.json"
+                            if session_file.exists():
+                                with open(session_file, "r", encoding="utf-8") as f:
+                                    messages = json.load(f)
+                                console.print(i18n.tr(language, "chat_session_loaded", name=session_name, count=len(messages)))
+                            else:
+                                console.print(i18n.tr(language, "chat_session_not_found", name=session_name))
+                    except Exception as e:
+                        console.print(f"[red]{e}[/red]")
+                    continue
+
                 # Voice input command
                 if prompt.strip().lower() == "/voice":
                     try:
