@@ -27,7 +27,8 @@ dependencies = [
     "rich==13.7.1",
     "SQLAlchemy==2.0.43",
     "unidecode==1.4.0",
-    "chromadb"
+    "chromadb",
+    "textual>=0.70.0"
 ]
 
 [project.optional-dependencies]

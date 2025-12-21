@@ -315,8 +315,66 @@ class GeminiChatBackend:
         return _resilient_api_call(self.chat.send_message, message)
 
 
+class _HttpResponse:
+    """Wraps HTTP text response to look like Gemini response object."""
+    def __init__(self, text: str):
+        self.text = text
+
+class HttpChatSession:
+    """Session giả lập cho HTTP providers (DeepSeek, Groq, OpenRouter)."""
+    
+    def __init__(self, model_name: str, system_instruction: str | None = None, history: list | None = None):
+        self.model_name = model_name
+        self.system_instruction = system_instruction
+        # Convert history format if needed, but for now accept list of dicts or empty
+        self._history = history or [] 
+
+    @property
+    def history(self):
+        return self._history
+
+    def send_message(self, content: str | list, stream=False, **kwargs):
+        # 1. Update history with user message
+        # Support simple string content for now
+        if isinstance(content, list):
+            # If complex parts, just extract text or verify?
+            # For simplicity, assume string for TUI
+            pass
+        
+        user_msg = {"role": "user", "content": str(content)}
+        self._history.append(user_msg)
+        
+        # 2. Call HTTP provider with FULL history
+        try:
+            response_text = http_providers.http_generate_text(
+                self.model_name,
+                self._history,
+                system_instruction=self.system_instruction
+            )
+        except Exception:
+            # If failed, remove the user message so we can retry?
+            # But standard ChatSession usually keeps it or inconsistent.
+            # Let's keep it simple.
+            raise
+
+        # 3. Update history with model response
+        self._history.append({"role": "model", "content": response_text})
+        
+        return _HttpResponse(text=response_text)
+
+
 def start_chat_session(model_name: str, system_instruction: str = None, history: list = None, cli_help_text: str = ""):
     """Khởi tạo chat session."""
+    
+    # Check if this is an HTTP model
+    try:
+        provider = http_providers.detect_provider_kind(model_name)
+    except Exception:
+        provider = "gemini"
+
+    if provider != "gemini":
+        return HttpChatSession(model_name, system_instruction, history)
+
     if not GEMINI_AVAILABLE:
         raise RuntimeError(
             "Gemini SDK không khả dụng trong môi trường hiện tại. "

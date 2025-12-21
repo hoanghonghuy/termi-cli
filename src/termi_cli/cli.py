@@ -56,6 +56,16 @@ def create_parser(language: str = "vi"):
     # --- Chế độ hoạt động ---
     mode_group = parser.add_argument_group(mode_group_title)
     mode_group.add_argument(
+        "--tui",
+        action="store_true",
+        help=(
+            "Launch the full Textual Terminal User Interface."
+            if language == "en"
+            else
+            "Khởi chạy giao diện người dùng Textual (TUI) đầy đủ."
+        ),
+    )
+    mode_group.add_argument(
         "--chat",
         action="store_true",
         help=(
@@ -752,6 +762,17 @@ def create_parser(language: str = "vi"):
             if language == "en"
             else
             "Lưu kết quả đầu ra vào một file thay vì in ra console."
+        ),
+    )
+    io_group.add_argument(
+        "--image-gen",
+        type=str,
+        metavar="PROMPT",
+        help=(
+            "Generate an image from a text prompt using OpenAI Compatible or Gemini API."
+            if language == "en"
+            else
+            "Tạo ảnh từ prompt văn bản sử dụng OpenAI Compatible hoặc Gemini API."
         ),
     )
 

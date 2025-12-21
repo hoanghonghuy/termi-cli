@@ -1,0 +1,258 @@
+/* --- DRACULA VARIABLES (Constants) --- */
+$dark-bg: #282a36;
+$dark-fg: #f8f8f2;
+$dark-surface: #44475a;
+$dark-border: #6272a4;
+$accent: #bd93f9;
+
+/* --- LIGHT VARIABLES (Constants) --- */
+$light-bg: #ffffff;
+$light-fg: #24292e;
+$light-surface: #f6f8fa;
+$light-border: #e1e4e8;
+$light-accent: #0366d6;
+
+/* --- BASE STYLES (Zen / Opencode Mode) --- */
+
+Screen {
+    background: $dark-bg;
+    color: $dark-fg;
+}
+/* Light mode when ChatScreen has .light class */
+ChatScreen.light {
+    background: $light-bg;
+    color: $light-fg;
+}
+
+/* Modal Styles */
+ModalScreen {
+    align: center middle;
+    background: 80% $dark-bg; /* Dimmed background */
+}
+ChatScreen.light ModalScreen {
+    background: 80% $light-bg;
+}
+
+.modal-container {
+    width: 60;
+    height: 30;
+    padding: 1;
+    background: $dark-bg;
+    border: solid $accent;
+}
+ChatScreen.light .modal-container {
+    background: $light-bg;
+    border: solid $light-accent;
+}
+
+.modal-title {
+    text-align: center;
+    text-style: bold;
+    margin-bottom: 1;
+    color: $accent;
+    border-bottom: solid $dark-surface;
+}
+ChatScreen.light .modal-title {
+    color: $light-accent;
+    border-bottom: solid $light-border;
+}
+
+/* Chat Layout - Full Width */
+#main-container {
+    height: 100%;
+    width: 100%;
+    padding: 0 2; /* Slight horizontal padding for readability */
+}
+
+#chat-view {
+    height: 1fr;
+    scrollbar-gutter: stable;
+}
+
+ChatMessage {
+    margin-bottom: 1;
+    padding: 0;
+}
+
+/* Messages - Clean, Minimal */
+.message-user {
+    text-align: right;
+    color: $dark-fg;
+    padding: 1 2;
+    /* Minimal indicator instead of box */
+    border-right: solid $dark-border; 
+    background: $dark-surface;
+}
+ChatScreen.light .message-user {
+    color: $light-fg;
+    border-right: solid $light-accent;
+    background: $light-surface;
+}
+
+.message-model {
+    text-align: left;
+    color: $dark-fg;
+    padding: 1 2;
+    background: transparent;
+}
+ChatScreen.light .message-model {
+    color: $light-fg;
+}
+
+.message-system {
+    content-align: center middle;
+    color: #6272a4;
+    text-style: italic;
+    background: transparent;
+}
+ChatScreen.light .message-system {
+    color: #586069;
+}
+
+/* Input Area - Floating Bar Look */
+#input-wrapper {
+    height: auto;
+    border-top: solid $dark-border;
+    background: $dark-bg;
+    padding: 1 0;
+    /* Ensure relative positioning context if needed, though overlay handles it */
+}
+ChatScreen.light #input-wrapper {
+    border-top: solid $light-border;
+    background: $light-bg;
+}
+
+/* Slash Menu Popup */
+SlashMenu {
+    layer: overlay;
+    dock: bottom;
+    margin-bottom: 4; /* Position just above input bar */
+    margin-left: 2;
+    width: 40;
+    height: auto;
+    max-height: 12;
+    background: $dark-surface;
+    border: solid $accent;
+}
+ChatScreen.light SlashMenu {
+    background: $light-surface;
+    border: solid $light-accent;
+}
+
+#chat-input {
+    width: 1fr;
+    background: $dark-bg;
+    border: none; 
+    color: $dark-fg;
+    height: 3;
+    padding: 0 1;
+}
+ChatScreen.light #chat-input {
+    background: $light-bg;
+    color: $light-fg;
+}
+
+#chat-input:focus {
+    border: none; 
+}
+
+/* Modal Lists */
+OptionList {
+    background: $dark-bg;
+    border: none;
+}
+ChatScreen.light OptionList {
+    background: $light-bg;
+}
+
+ListView {
+    background: $dark-bg;
+    border: none;
+}
+ChatScreen.light ListView {
+    background: $light-bg;
+}
+ListItem:hover {
+    background: $dark-surface;
+}
+ChatScreen.light ListItem:hover {
+    background: $light-surface;
+}
+
+.label-label {
+    text-style: bold;
+    color: $accent;
+}
+ChatScreen.light .label-label {
+    color: $light-accent;
+}
+
+/* --- Settings Modal Specific --- */
+.modal-settings {
+    height: auto;
+    max-height: 25;
+}
+
+.setting-row {
+    height: auto;
+    margin-bottom: 1;
+    align: left middle;
+}
+
+.setting-label {
+    width: 15;
+    text-style: bold;
+}
+
+Switch {
+    margin-left: 1;
+}
+
+Button {
+    margin-left: 1;
+    min-width: 6;
+}
+
+/* --- Chat Bubble Improvements --- */
+ChatMessage {
+    margin-bottom: 2;  /* Increased from 1 for better separation */
+    padding: 0;
+}
+
+.message-user {
+    text-align: right;
+    color: $dark-fg;
+    padding: 1 2;
+    margin-left: 10;  /* Offset to show it's from user */
+    border-right: solid $dark-border; 
+    background: $dark-surface;
+}
+ChatScreen.light .message-user {
+    color: $light-fg;
+    border-right: solid $light-accent;
+    background: $light-surface;
+}
+
+.message-model {
+    text-align: left;
+    color: $dark-fg;
+    padding: 1 2;
+    margin-right: 10;  /* Offset for model response */
+    background: transparent;
+    border-left: solid $accent;
+}
+ChatScreen.light .message-model {
+    color: $light-fg;
+    border-left: solid $light-accent;
+}
+
+.message-system {
+    content-align: center middle;
+    color: #6272a4;
+    text-style: italic;
+    background: transparent;
+    margin: 1 5;
+}
+ChatScreen.light .message-system {
+    color: #586069;
+}

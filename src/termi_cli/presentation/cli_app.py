@@ -77,6 +77,25 @@ def run_cli(
         )
         return
 
+    # TUI Mode startup
+    if getattr(args, "tui", False):
+        from termi_cli.tui.app import TermiApp
+        app = TermiApp(config=config, language=language)
+        app.run()
+        return
+
+    # Image Generation CLI flag
+    if getattr(args, "image_gen", None):
+        from termi_cli.application.image_generator import generate_image
+        prompt = args.image_gen
+        console.print(i18n.tr(language, "imggen_generating", prompt=prompt))
+        result = generate_image(config, prompt, language)
+        if result["success"]:
+            console.print(i18n.tr(language, "imggen_success", path=result["path"]))
+        else:
+            console.print(i18n.tr(language, "imggen_error", error=result["error"]))
+        return
+
     # Config wizard
     if getattr(args, "setup", False):
         from termi_cli.application.config_wizard import run_config_wizard
