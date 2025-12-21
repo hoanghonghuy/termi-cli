@@ -14,7 +14,7 @@ from rich.console import Console
 from rich.prompt import Prompt, Confirm
 from rich.panel import Panel
 
-from termi_cli.config import APP_DIR, get_config, save_config
+from termi_cli.config import APP_DIR, load_config, save_config
 
 
 def run_config_wizard(language: str = "vi") -> bool:
@@ -27,7 +27,7 @@ def run_config_wizard(language: str = "vi") -> bool:
         True if setup completed successfully
     """
     console = Console()
-    config = get_config()
+    config = load_config()
     
     # Header
     if language == "vi":

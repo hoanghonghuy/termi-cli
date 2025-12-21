@@ -10,7 +10,7 @@ import logging
 from pathlib import Path
 from typing import Optional
 
-from termi_cli.config import APP_DIR, get_config, save_config
+from termi_cli.config import APP_DIR, load_config, save_config
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +81,7 @@ THEMES = {
 
 def get_current_theme() -> str:
     """Get current theme name from config."""
-    config = get_config()
+    config = load_config()
     return config.get("theme", "default")
 
 
@@ -97,7 +97,7 @@ def set_theme(theme_name: str) -> bool:
     if theme_name not in THEMES:
         return False
     
-    config = get_config()
+    config = load_config()
     config["theme"] = theme_name
     save_config(config)
     return True
