@@ -377,6 +377,44 @@ class ChatService:
                     console.print(f"[dim]Available tools: {tool_names}[/dim]")
                     continue
 
+                # Search/view history
+                if prompt.strip().lower().startswith("/history"):
+                    parts = prompt.strip().split(maxsplit=1)
+                    if len(parts) == 1:
+                        # Show recent messages
+                        console.print("[bold cyan]📜 Recent history:[/bold cyan]")
+                        for i, msg in enumerate(messages[-10:], 1):
+                            role = msg.get("role", "user")
+                            content = msg.get("content", "")
+                            if isinstance(content, list):
+                                content = "[multi-modal]"
+                            content = content[:80] + "..." if len(content) > 80 else content
+                            console.print(f"  {i}. [{role}] {content}")
+                    else:
+                        # Search history
+                        search_term = parts[1].lower()
+                        matches = []
+                        for msg in messages:
+                            content = msg.get("content", "")
+                            if isinstance(content, str) and search_term in content.lower():
+                                matches.append(msg)
+                        if matches:
+                            console.print(f"[green]Found {len(matches)} matches:[/green]")
+                            for m in matches[:5]:
+                                content = m.get("content", "")[:100]
+                                console.print(f"  - [{m.get('role')}] {content}...")
+                        else:
+                            console.print("[yellow]No matches found.[/yellow]")
+                    continue
+
+                # Check for updates
+                if prompt.strip().lower() == "/update":
+                    from termi_cli.application import update_checker
+                    console.print("[dim]Checking for updates...[/dim]")
+                    msg = update_checker.get_update_message(language)
+                    console.print(msg)
+                    continue
+
                 # Help command
                 if prompt.strip().lower() == "/help":
                     console.print(i18n.tr(language, "chat_help_title"))

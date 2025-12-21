@@ -247,10 +247,12 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
   [green]/tools[/green]    - Liệt kê tools khả dụng
   [green]/rag[/green]      - Bật/tắt chế độ RAG
   [green]/clear[/green]    - Xóa lịch sử chat
-  [green]/export[/green]   - Xuất cuộc hội thoại (JSON/MD)
+  [green]/export[/green]   - Xuất cuộc hội thoại
   [green]/model[/green]    - Xem/đổi model
   [green]/save[/green]     - Lưu phiên hiện tại
   [green]/load[/green]     - Tải phiên đã lưu
+  [green]/history[/green]  - Xem/tìm lịch sử
+  [green]/update[/green]   - Kiểm tra cập nhật
   [green]/image[/green] path - Đính kèm ảnh
   [green]/file[/green] path  - Đính kèm file text
   [green]/voice[/green]    - Thu âm giọng nói
@@ -372,15 +374,17 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_help_title": "[bold cyan]\ud83d\udcd6 Chat Commands:[/bold cyan]",
         "chat_help_content": """  [green]/help[/green]     - Show this help
   [green]/tools[/green]    - List available tools
-  [green]/rag[/green]      - Toggle RAG mode on/off
+  [green]/rag[/green]      - Toggle RAG mode
   [green]/clear[/green]    - Clear chat history
-  [green]/export[/green]   - Export conversation (JSON/MD)
+  [green]/export[/green]   - Export conversation
   [green]/model[/green]    - View/switch model
-  [green]/save[/green]     - Save current session
-  [green]/load[/green]     - Load saved session
-  [green]/image[/green] path - Attach an image
-  [green]/file[/green] path  - Attach a text file
-  [green]/voice[/green]    - Record voice input
+  [green]/save[/green]     - Save session
+  [green]/load[/green]     - Load session
+  [green]/history[/green]  - View/search history
+  [green]/update[/green]   - Check for updates
+  [green]/image[/green] path - Attach image
+  [green]/file[/green] path  - Attach file
+  [green]/voice[/green]    - Voice input
   [green]exit[/green]      - Exit chat""",
         "chat_voice_not_available": "[yellow]Voice recording not available. Install: pip install sounddevice[/yellow]",
         "chat_no_audio": "[yellow]No audio recorded.[/yellow]",

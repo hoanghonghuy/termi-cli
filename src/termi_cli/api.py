@@ -48,6 +48,10 @@ from termi_cli.tools import instruction_tool
 from termi_cli.tools import code_tool
 from termi_cli.tools import git_advanced_tool
 from termi_cli.tools import web_scraper_tool
+from termi_cli.tools import screenshot_tool
+from termi_cli.tools import pdf_tool
+from termi_cli.tools import api_tester_tool
+from termi_cli.tools import database_tool
 from termi_cli.prompts import build_enhanced_instruction
 from termi_cli.config import APP_DIR
 from termi_cli.infrastructure import http_providers
@@ -198,6 +202,20 @@ AVAILABLE_TOOLS = {
     # Web scraper tools
     web_scraper_tool.scrape_url.__name__: web_scraper_tool.scrape_url,
     web_scraper_tool.get_page_links.__name__: web_scraper_tool.get_page_links,
+    # Screenshot tools
+    screenshot_tool.take_screenshot.__name__: screenshot_tool.take_screenshot,
+    screenshot_tool.get_screen_size.__name__: screenshot_tool.get_screen_size,
+    # PDF tools
+    pdf_tool.read_pdf.__name__: pdf_tool.read_pdf,
+    pdf_tool.get_pdf_info.__name__: pdf_tool.get_pdf_info,
+    # API tester tools
+    api_tester_tool.http_request.__name__: api_tester_tool.http_request,
+    api_tester_tool.http_get.__name__: api_tester_tool.http_get,
+    api_tester_tool.http_post.__name__: api_tester_tool.http_post,
+    # Database tools
+    database_tool.query_sqlite.__name__: database_tool.query_sqlite,
+    database_tool.list_tables.__name__: database_tool.list_tables,
+    database_tool.describe_table.__name__: database_tool.describe_table,
 }
 
 # Hợp nhất plugin tools (nếu có), ưu tiên giữ nguyên core tools khi trùng tên
