@@ -379,15 +379,8 @@ class ChatService:
 
                 # Help command
                 if prompt.strip().lower() == "/help":
-                    help_text = """[bold cyan]📖 Chat Commands:[/bold cyan]
-  [green]/help[/green]     - Show this help
-  [green]/tools[/green]    - List available tools
-  [green]/rag[/green]      - Toggle RAG mode on/off
-  [green]/image[/green] path - Attach an image
-  [green]/file[/green] path  - Attach a text file
-  [green]/voice[/green]    - Record voice input (requires sounddevice)
-  [green]exit[/green]      - Exit chat"""
-                    console.print(help_text)
+                    console.print(i18n.tr(language, "chat_help_title"))
+                    console.print(i18n.tr(language, "chat_help_content"))
                     continue
 
                 # Voice input command
@@ -395,7 +388,7 @@ class ChatService:
                     try:
                         from termi_cli.voice import stt
                         if not stt.is_recording_available():
-                            console.print("[yellow]Voice recording not available. Install: pip install sounddevice[/yellow]")
+                            console.print(i18n.tr(language, "chat_voice_not_available"))
                             continue
                         
                         console.print(i18n.tr(language, "voice_listening"))
@@ -413,7 +406,7 @@ class ChatService:
                                 console.print(f"[yellow]{text}[/yellow]")
                                 continue
                         else:
-                            console.print("[yellow]No audio recorded.[/yellow]")
+                            console.print(i18n.tr(language, "chat_no_audio"))
                             continue
                     except Exception as e:
                         console.print(i18n.tr(language, "voice_error", error=str(e)))

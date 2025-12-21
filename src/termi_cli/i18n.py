@@ -241,6 +241,18 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "voice_speaking": "[dim]Đang phát âm...[/dim]",
         "voice_error": "[bold red]Lỗi voice: {error}[/bold red]",
 
+        # Chat slash commands
+        "chat_help_title": "[bold cyan]\ud83d\udcd6 Các lệnh Chat:[/bold cyan]",
+        "chat_help_content": """  [green]/help[/green]     - Hiển thị trợ giúp này
+  [green]/tools[/green]    - Liệt kê tools khả dụng
+  [green]/rag[/green]      - Bật/tắt chế độ RAG
+  [green]/image[/green] path - Đính kèm ảnh
+  [green]/file[/green] path  - Đính kèm file text
+  [green]/voice[/green]    - Thu âm giọng nói (cần sounddevice)
+  [green]exit[/green]      - Thoát chat""",
+        "chat_voice_not_available": "[yellow]Thu âm không khả dụng. Cài: pip install sounddevice[/yellow]",
+        "chat_no_audio": "[yellow]Không thu được âm thanh.[/yellow]",
+
         # Agent handler
         "agent_project_name_default": "Không có tên",
         "agent_reasoning_default": "Không có giải thích.",
@@ -337,6 +349,18 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "voice_you_said": "[green]You said:[/green] {text}",
         "voice_speaking": "[dim]Speaking...[/dim]",
         "voice_error": "[bold red]Voice error: {error}[/bold red]",
+
+        # Chat slash commands
+        "chat_help_title": "[bold cyan]\ud83d\udcd6 Chat Commands:[/bold cyan]",
+        "chat_help_content": """  [green]/help[/green]     - Show this help
+  [green]/tools[/green]    - List available tools
+  [green]/rag[/green]      - Toggle RAG mode on/off
+  [green]/image[/green] path - Attach an image
+  [green]/file[/green] path  - Attach a text file
+  [green]/voice[/green]    - Record voice input (requires sounddevice)
+  [green]exit[/green]      - Exit chat""",
+        "chat_voice_not_available": "[yellow]Voice recording not available. Install: pip install sounddevice[/yellow]",
+        "chat_no_audio": "[yellow]No audio recorded.[/yellow]",
 
         "memory_reset_confirm": "Are you sure you want to delete the long-term memory database (memory_db)? (y/n): ",
         "memory_reset_cancelled": "[yellow]Cancelled memory reset.[/yellow]",
