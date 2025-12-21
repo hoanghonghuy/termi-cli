@@ -245,17 +245,16 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_help_title": "[bold cyan]\ud83d\udcd6 Các lệnh Chat:[/bold cyan]",
         "chat_help_content": """  [green]/help[/green]     - Hiển thị trợ giúp này
   [green]/tools[/green]    - Liệt kê tools khả dụng
+  [green]/alias[/green]    - Quản lý phím tắt
+  [green]/template[/green] - Quản lý templates
   [green]/rag[/green]      - Bật/tắt chế độ RAG
   [green]/clear[/green]    - Xóa lịch sử chat
   [green]/export[/green]   - Xuất cuộc hội thoại
   [green]/model[/green]    - Xem/đổi model
-  [green]/save[/green]     - Lưu phiên hiện tại
-  [green]/load[/green]     - Tải phiên đã lưu
+  [green]/save[/green]     - Lưu phiên
+  [green]/load[/green]     - Tải phiên
   [green]/history[/green]  - Xem/tìm lịch sử
   [green]/update[/green]   - Kiểm tra cập nhật
-  [green]/image[/green] path - Đính kèm ảnh
-  [green]/file[/green] path  - Đính kèm file text
-  [green]/voice[/green]    - Thu âm giọng nói
   [green]exit[/green]      - Thoát chat""",
         "chat_voice_not_available": "[yellow]Thu âm không khả dụng. Cài: pip install sounddevice[/yellow]",
         "chat_no_audio": "[yellow]Không thu được âm thanh.[/yellow]",
@@ -272,6 +271,27 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_session_list_title": "[bold cyan]\ud83d\udcc2 Phiên đã lưu:[/bold cyan]",
         "chat_no_sessions": "[dim]Chưa có phiên nào được lưu.[/dim]",
         "chat_speaking_response": "[dim]Đang đọc phản hồi...[/dim]",
+        "chat_history_title": "[bold cyan]\ud83d\udcdc Lịch sử gần đây:[/bold cyan]",
+        "chat_history_found": "[green]Tìm thấy {count} kết quả:[/green]",
+        "chat_history_no_match": "[yellow]Không tìm thấy kết quả.[/yellow]",
+        "chat_checking_update": "[dim]Đang kiểm tra cập nhật...[/dim]",
+        
+        # Alias system
+        "alias_added": "[green]Đã thêm alias '{name}' -> '{cmd}'[/green]",
+        "alias_removed": "[green]Đã xóa alias '{name}'[/green]",
+        "alias_not_found": "[yellow]Không tìm thấy alias '{name}'[/yellow]",
+        "alias_list_title": "[bold cyan]\ud83d\udd17 Danh sách alias:[/bold cyan]",
+        "alias_empty": "[dim]Chưa có alias nào.[/dim]",
+        "alias_usage": "[dim]Sử dụng: /alias add name command | /alias remove name | /alias[/dim]",
+        
+        # Template system
+        "template_added": "[green]Đã thêm template '{name}'[/green]",
+        "template_removed": "[green]Đã xóa template '{name}'[/green]",
+        "template_not_found": "[yellow]Không tìm thấy template '{name}'[/yellow]",
+        "template_list_title": "[bold cyan]\ud83d\udcdd Danh sách template:[/bold cyan]",
+        "template_empty": "[dim]Chưa có template nào.[/dim]",
+        "template_applied": "[dim]Đã áp dụng template '{name}'[/dim]",
+        "template_usage": "[dim]Sử dụng: /template use name | /template add name content | /template[/dim]",
 
         # Agent handler
         "agent_project_name_default": "Không có tên",
@@ -374,6 +394,8 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_help_title": "[bold cyan]\ud83d\udcd6 Chat Commands:[/bold cyan]",
         "chat_help_content": """  [green]/help[/green]     - Show this help
   [green]/tools[/green]    - List available tools
+  [green]/alias[/green]    - Manage shortcuts
+  [green]/template[/green] - Manage templates
   [green]/rag[/green]      - Toggle RAG mode
   [green]/clear[/green]    - Clear chat history
   [green]/export[/green]   - Export conversation
@@ -382,9 +404,6 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
   [green]/load[/green]     - Load session
   [green]/history[/green]  - View/search history
   [green]/update[/green]   - Check for updates
-  [green]/image[/green] path - Attach image
-  [green]/file[/green] path  - Attach file
-  [green]/voice[/green]    - Voice input
   [green]exit[/green]      - Exit chat""",
         "chat_voice_not_available": "[yellow]Voice recording not available. Install: pip install sounddevice[/yellow]",
         "chat_no_audio": "[yellow]No audio recorded.[/yellow]",
@@ -401,6 +420,27 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_session_list_title": "[bold cyan]\ud83d\udcc2 Saved sessions:[/bold cyan]",
         "chat_no_sessions": "[dim]No saved sessions.[/dim]",
         "chat_speaking_response": "[dim]Speaking response...[/dim]",
+        "chat_history_title": "[bold cyan]\ud83d\udcdc Recent history:[/bold cyan]",
+        "chat_history_found": "[green]Found {count} matches:[/green]",
+        "chat_history_no_match": "[yellow]No matches found.[/yellow]",
+        "chat_checking_update": "[dim]Checking for updates...[/dim]",
+        
+        # Alias system
+        "alias_added": "[green]Added alias '{name}' -> '{cmd}'[/green]",
+        "alias_removed": "[green]Removed alias '{name}'[/green]",
+        "alias_not_found": "[yellow]Alias '{name}' not found[/yellow]",
+        "alias_list_title": "[bold cyan]\ud83d\udd17 Aliases:[/bold cyan]",
+        "alias_empty": "[dim]No aliases defined.[/dim]",
+        "alias_usage": "[dim]Usage: /alias add name command | /alias remove name | /alias[/dim]",
+        
+        # Template system
+        "template_added": "[green]Added template '{name}'[/green]",
+        "template_removed": "[green]Removed template '{name}'[/green]",
+        "template_not_found": "[yellow]Template '{name}' not found[/yellow]",
+        "template_list_title": "[bold cyan]\ud83d\udcdd Templates:[/bold cyan]",
+        "template_empty": "[dim]No templates defined.[/dim]",
+        "template_applied": "[dim]Applied template '{name}'[/dim]",
+        "template_usage": "[dim]Usage: /template use name | /template add name content | /template[/dim]",
 
         "memory_reset_confirm": "Are you sure you want to delete the long-term memory database (memory_db)? (y/n): ",
         "memory_reset_cancelled": "[yellow]Cancelled memory reset.[/yellow]",

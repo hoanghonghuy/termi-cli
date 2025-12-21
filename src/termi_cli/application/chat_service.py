@@ -377,12 +377,81 @@ class ChatService:
                     console.print(f"[dim]Available tools: {tool_names}[/dim]")
                     continue
 
+                # Alias management
+                if prompt.strip().lower().startswith("/alias"):
+                    from termi_cli.application import alias_manager
+                    parts = prompt.strip().split()
+                    if len(parts) == 1:
+                        # List aliases
+                        aliases = alias_manager.list_aliases()
+                        if aliases:
+                            console.print(i18n.tr(language, "alias_list_title"))
+                            for name, cmd in aliases.items():
+                                console.print(f"  {name} -> {cmd}")
+                        else:
+                            console.print(i18n.tr(language, "alias_empty"))
+                    elif len(parts) >= 3 and parts[1] == "add":
+                        name = parts[2]
+                        cmd = " ".join(parts[3:]) if len(parts) > 3 else ""
+                        alias_manager.add_alias(name, cmd)
+                        console.print(i18n.tr(language, "alias_added", name=name, cmd=cmd))
+                    elif len(parts) == 3 and parts[1] == "remove":
+                        name = parts[2]
+                        if alias_manager.remove_alias(name):
+                            console.print(i18n.tr(language, "alias_removed", name=name))
+                        else:
+                            console.print(i18n.tr(language, "alias_not_found", name=name))
+                    else:
+                        console.print(i18n.tr(language, "alias_usage"))
+                    continue
+
+                # Template management
+                if prompt.strip().lower().startswith("/template"):
+                    from termi_cli.application import template_manager
+                    parts = prompt.strip().split(maxsplit=3)
+                    if len(parts) == 1:
+                        # List templates
+                        templates = template_manager.list_templates()
+                        if templates:
+                            console.print(i18n.tr(language, "template_list_title"))
+                            for name, data in templates.items():
+                                desc = data.get("description", "")[:40]
+                                console.print(f"  {name}: {desc}")
+                        else:
+                            console.print(i18n.tr(language, "template_empty"))
+                    elif len(parts) >= 3 and parts[1] == "use":
+                        name = parts[2]
+                        template = template_manager.get_template(name)
+                        if template:
+                            console.print(i18n.tr(language, "template_applied", name=name))
+                            prompt = template["content"]
+                            # Don't continue, let this prompt be processed
+                        else:
+                            console.print(i18n.tr(language, "template_not_found", name=name))
+                            continue
+                    elif len(parts) >= 4 and parts[1] == "add":
+                        name = parts[2]
+                        content = parts[3]
+                        template_manager.add_template(name, content)
+                        console.print(i18n.tr(language, "template_added", name=name))
+                        continue
+                    elif len(parts) == 3 and parts[1] == "remove":
+                        name = parts[2]
+                        if template_manager.remove_template(name):
+                            console.print(i18n.tr(language, "template_removed", name=name))
+                        else:
+                            console.print(i18n.tr(language, "template_not_found", name=name))
+                        continue
+                    else:
+                        console.print(i18n.tr(language, "template_usage"))
+                        continue
+
                 # Search/view history
                 if prompt.strip().lower().startswith("/history"):
                     parts = prompt.strip().split(maxsplit=1)
                     if len(parts) == 1:
                         # Show recent messages
-                        console.print("[bold cyan]📜 Recent history:[/bold cyan]")
+                        console.print(i18n.tr(language, "chat_history_title"))
                         for i, msg in enumerate(messages[-10:], 1):
                             role = msg.get("role", "user")
                             content = msg.get("content", "")
@@ -399,18 +468,18 @@ class ChatService:
                             if isinstance(content, str) and search_term in content.lower():
                                 matches.append(msg)
                         if matches:
-                            console.print(f"[green]Found {len(matches)} matches:[/green]")
+                            console.print(i18n.tr(language, "chat_history_found", count=len(matches)))
                             for m in matches[:5]:
                                 content = m.get("content", "")[:100]
                                 console.print(f"  - [{m.get('role')}] {content}...")
                         else:
-                            console.print("[yellow]No matches found.[/yellow]")
+                            console.print(i18n.tr(language, "chat_history_no_match"))
                     continue
 
                 # Check for updates
                 if prompt.strip().lower() == "/update":
                     from termi_cli.application import update_checker
-                    console.print("[dim]Checking for updates...[/dim]")
+                    console.print(i18n.tr(language, "chat_checking_update"))
                     msg = update_checker.get_update_message(language)
                     console.print(msg)
                     continue
