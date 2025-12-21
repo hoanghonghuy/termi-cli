@@ -364,6 +364,19 @@ class ChatService:
                         console.print(i18n.tr(language, "code_file_not_found", path=file_path))
                     continue
 
+                # Toggle RAG mode during chat
+                if prompt.strip().lower() == "/rag":
+                    current_rag = getattr(args, "rag", False)
+                    args.rag = not current_rag
+                    status = "ON" if args.rag else "OFF"
+                    console.print(f"[green]RAG mode: {status}[/green]")
+                    continue
+
+                # Show available tools
+                if prompt.strip().lower() == "/tools":
+                    console.print(f"[dim]Available tools: {tool_names}[/dim]")
+                    continue
+
                 if prompt.lower().strip() in ["exit", "quit", "q"]:
                     break
                 
@@ -397,6 +410,26 @@ class ChatService:
                 # Reset pending buffers
                 pending_images = []
                 pending_files_content = []
+
+                # RAG context injection when --rag flag is enabled
+                if getattr(args, "rag", False) and user_text_part:
+                    from termi_cli.rag import codebase_query
+                    index_name = getattr(args, "rag_index", "default")
+                    if codebase_query.is_index_available(index_name):
+                        rag_context = codebase_query.get_codebase_context(user_text_part, index_name)
+                        if rag_context:
+                            console.print(i18n.tr(language, "rag_context_found"))
+                            # Inject RAG context into user text
+                            if isinstance(user_content, str):
+                                user_content = f"{rag_context}\n---\n\nUser question: {user_content}"
+                            elif isinstance(user_content, list):
+                                # Multi-modal: prepend to first text part
+                                for item in user_content:
+                                    if item.get("type") == "text":
+                                        item["text"] = f"{rag_context}\n---\n\nUser question: {item['text']}"
+                                        break
+                        else:
+                            console.print(i18n.tr(language, "rag_no_context"))
 
                 # Add to history
                 messages.append({"role": "user", "content": user_content})
