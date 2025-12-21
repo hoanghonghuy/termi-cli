@@ -110,11 +110,75 @@ def _build_plan_checklist(project_plan: dict, language: str) -> Table | None:
     return table
 
 
+def _find_balanced_json(text: str, start_idx: int) -> str | None:
+    """Extract JSON object by counting balanced braces starting from start_idx."""
+    if start_idx >= len(text) or text[start_idx] != '{':
+        return None
+    
+    depth = 0
+    in_string = False
+    escape_next = False
+    
+    for i in range(start_idx, len(text)):
+        char = text[i]
+        
+        if escape_next:
+            escape_next = False
+            continue
+        
+        if char == '\\' and in_string:
+            escape_next = True
+            continue
+        
+        if char == '"' and not escape_next:
+            in_string = not in_string
+            continue
+        
+        if in_string:
+            continue
+        
+        if char == '{':
+            depth += 1
+        elif char == '}':
+            depth -= 1
+            if depth == 0:
+                return text[start_idx:i + 1]
+    
+    return None
+
+
 def _extract_first_json_match(text: str):
-    json_match = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
-    if not json_match:
-        json_match = re.search(r"(\{.*?\})", text, re.DOTALL)
-    return json_match
+    """Extract first valid JSON object from text, handling nested structures."""
+    # First try to find JSON in code block
+    code_block_match = re.search(r"```json\s*", text, re.DOTALL)
+    if code_block_match:
+        block_start = code_block_match.end()
+        # Find the opening brace after ```json
+        brace_pos = text.find('{', block_start)
+        if brace_pos != -1:
+            json_str = _find_balanced_json(text, brace_pos)
+            if json_str:
+                # Create a mock match object with group(1)
+                class MockMatch:
+                    def __init__(self, json_content: str):
+                        self._json = json_content
+                    def group(self, n: int) -> str:
+                        return self._json if n == 1 else self._json
+                return MockMatch(json_str)
+    
+    # Fallback: find first { and extract balanced JSON
+    brace_pos = text.find('{')
+    if brace_pos != -1:
+        json_str = _find_balanced_json(text, brace_pos)
+        if json_str:
+            class MockMatch:
+                def __init__(self, json_content: str):
+                    self._json = json_content
+                def group(self, n: int) -> str:
+                    return self._json if n == 1 else self._json
+            return MockMatch(json_str)
+    
+    return None
 
 
 class AgentJsonParseError(ValueError):
@@ -155,7 +219,21 @@ def _get_safe_agent_model(console: Console, config: dict) -> str:
     """
 
     language = config.get("language", "vi")
-    agent_model = config.get("agent_model", "models/gemini-pro-latest")
+    
+    # Smart resolution:
+    # 1. Get raw agent_model (likely defaults to 'models/gemini-pro-latest' from config.py)
+    agent_model = config.get("agent_model")
+    
+    # 2. If it's the default Gemini Pro, check if user explicitly set a different provider as default
+    if agent_model == "models/gemini-pro-latest":
+        default_model = config.get("default_model")
+        # If default_model is set and is NOT a Gemini model (starts with models/ or has gemini), prefer it.
+        # This allows OpenAI/DeepSeek/Ollama users to use their preferred model for Agent automatically.
+        if default_model and not (default_model.startswith("models/") or "gemini" in default_model.lower()):
+            agent_model = default_model
+            
+    # 3. Final fallback
+    agent_model = agent_model or config.get("default_model") or "models/gemini-pro-latest"
 
     if isinstance(agent_model, str) and api.is_ollama_model(agent_model):
         return agent_model
@@ -368,10 +446,10 @@ class AgentExecutionContext:
                         or agent_model_name.startswith("groq-")
                         or agent_model_name.startswith("groq-")
                         or api.is_openrouter_model(agent_model_name)
-                        or api.is_generic_openai_model(agent_model_name)
                     )
                 )
                 or api.is_ollama_model(agent_model_name)
+                or api.is_generic_openai_model(agent_model_name)
             )
         )
 
@@ -443,10 +521,10 @@ class AgentService:
                                 or agent_model_name.startswith("groq-")
                                 or agent_model_name.startswith("groq-")
                                 or api.is_openrouter_model(agent_model_name)
-                                or api.is_generic_openai_model(agent_model_name)
                             )
                         )
                         or api.is_ollama_model(agent_model_name)
+                        or api.is_generic_openai_model(agent_model_name)
                     )
                 )
 
