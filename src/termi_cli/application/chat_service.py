@@ -485,6 +485,85 @@ class ChatService:
                             console.print(i18n.tr(language, "theme_usage"))
                     continue
 
+                # Memory management
+                if prompt.strip().lower().startswith("/memory"):
+                    from termi_cli.application import memory_manager
+                    parts = prompt.strip().split()
+                    cmd = parts[1] if len(parts) > 1 else ""
+                    
+                    if not cmd or cmd == "list":
+                        limit = 10
+                        if len(parts) > 2 and parts[2].isdigit():
+                            limit = int(parts[2])
+                        memories = memory_manager.list_memories(limit)
+                        console.print(i18n.tr(language, "memory_list_title"))
+                        if not memories:
+                             console.print("  [dim]Start adding memories with /memory add ...[/dim]")
+                        for m in memories:
+                            date_str = m.get("created_at", "")
+                            console.print(f"  [dim]#{m['id']} ({date_str}):[/dim] {m['content']}")
+
+                    elif cmd == "add":
+                        # /memory add <content...>
+                        if len(parts) < 3:
+                            console.print(i18n.tr(language, "memory_usage"))
+                        else:
+                            # Re-parse to get full content
+                            content = prompt.strip().split(maxsplit=2)[2]
+                            memory_manager.add_memory(content)
+                            console.print(i18n.tr(language, "memory_added", content=content))
+
+                    elif cmd == "delete":
+                        if len(parts) < 3 or not parts[2].isdigit():
+                            console.print(i18n.tr(language, "memory_usage"))
+                        else:
+                            mid = int(parts[2])
+                            if memory_manager.delete_memory(mid):
+                                 console.print(i18n.tr(language, "memory_deleted", id=mid))
+                            else:
+                                 console.print(i18n.tr(language, "memory_not_found", id=mid))
+
+                    elif cmd == "search":
+                        if len(parts) < 3:
+                            console.print(i18n.tr(language, "memory_usage"))
+                        else:
+                            query = prompt.strip().split(maxsplit=2)[2]
+                            results = memory_manager.search_memories(query)
+                            console.print(i18n.tr(language, "chat_history_found", count=len(results)))
+                            for m in results:
+                                console.print(f"  [dim]#{m['id']}:[/dim] {m['content']}")
+
+                    else:
+                        console.print(i18n.tr(language, "memory_usage"))
+                    continue
+
+                # Plugin management
+                if prompt.strip().lower().startswith("/plugins"):
+                     from termi_cli import api
+                     # Reload plugins
+                     try:
+                         # Hacky re-load: update AVAILABLE_TOOLS directly
+                         new_tools = api._load_plugin_tools() # This calls plugin_manager.load_plugins
+                         count = 0
+                         for name, func in new_tools.items():
+                             if name not in api.AVAILABLE_TOOLS:
+                                 api.AVAILABLE_TOOLS[name] = func
+                                 count += 1
+                         
+                         console.print("[bold cyan]Plugins System:[/bold cyan]")
+                         from termi_cli.application import plugin_manager
+                         # List .py files
+                         if plugin_manager.PLUGINS_DIR.exists():
+                             files = list(plugin_manager.PLUGINS_DIR.glob("*.py"))
+                             console.print(f"  Files found: {len(files)}")
+                             for f in files:
+                                 console.print(f"  - {f.name}")
+                         
+                         console.print(f"  [green]Tools Loaded & Synced.[/green]")
+                     except Exception as e:
+                         console.print(f"[red]Plugin Error: {e}[/red]")
+                     continue
+
                 # Search/view history
                 if prompt.strip().lower().startswith("/history"):
                     parts = prompt.strip().split(maxsplit=1)
