@@ -555,6 +555,16 @@ def create_parser(language: str = "vi"):
             "Hiển thị thống kê về index codebase."
         ),
     )
+    rag_group.add_argument(
+        "--force-reindex",
+        action="store_true",
+        help=(
+            "Force re-indexing of all files (ignore existing chunks)."
+            if language == "en"
+            else
+            "Buộc index lại toàn bộ (bỏ qua chunks đã tồn tại)."
+        ),
+    )
 
     # --- MCP (Model Context Protocol) ---
     mcp_group_title = "MCP Servers" if language == "en" else "MCP Server"

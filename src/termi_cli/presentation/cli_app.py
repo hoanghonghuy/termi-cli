@@ -198,7 +198,8 @@ def run_cli(
         index_name = getattr(args, "rag_index", "default")
         console.print(i18n.tr(language, "rag_indexing_start", directory=directory))
         try:
-            stats = codebase_indexer.index_codebase(directory, index_name)
+            force = getattr(args, "force_reindex", False)
+            stats = codebase_indexer.index_codebase(directory, index_name, force=force)
             if "error" in stats and stats["error"]:
                 console.print(i18n.tr(language, "rag_indexing_error", error=stats["error"]))
             else:
@@ -217,6 +218,18 @@ def run_cli(
     if getattr(args, "clear_index", False):
         from termi_cli.rag import codebase_indexer
         index_name = getattr(args, "rag_index", "default")
+        
+        # Get current stats for confirmation
+        stats = codebase_indexer.get_index_stats(index_name)
+        if stats.get("available", False):
+            chunk_count = stats.get("count", 0)
+            confirm = console.input(
+                f"[yellow]Index '{index_name}' có {chunk_count} chunks. Xác nhận xóa? (y/n): [/yellow]"
+            ).strip().lower()
+            if confirm not in ("y", "yes"):
+                console.print("[yellow]Đã hủy.[/yellow]")
+                return
+        
         if codebase_indexer.clear_index(index_name):
             console.print(i18n.tr(language, "rag_index_cleared", name=index_name))
         else:
