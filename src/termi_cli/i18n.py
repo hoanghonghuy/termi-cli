@@ -244,16 +244,17 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         # Chat slash commands
         "chat_help_title": "[bold cyan]\ud83d\udcd6 Các lệnh Chat:[/bold cyan]",
         "chat_help_content": """  [green]/help[/green]     - Hiển thị trợ giúp này
-  [green]/tools[/green]    - Liệt kê tools khả dụng
+  [green]/tools[/green]    - Liệt kê tools
   [green]/alias[/green]    - Quản lý phím tắt
   [green]/template[/green] - Quản lý templates
-  [green]/rag[/green]      - Bật/tắt chế độ RAG
-  [green]/clear[/green]    - Xóa lịch sử chat
-  [green]/export[/green]   - Xuất cuộc hội thoại
+  [green]/theme[/green]    - Đổi theme
+  [green]/rag[/green]      - Bật/tắt RAG
+  [green]/clear[/green]    - Xóa lịch sử
+  [green]/export[/green]   - Xuất chat
   [green]/model[/green]    - Xem/đổi model
   [green]/save[/green]     - Lưu phiên
   [green]/load[/green]     - Tải phiên
-  [green]/history[/green]  - Xem/tìm lịch sử
+  [green]/history[/green]  - Tìm lịch sử
   [green]/update[/green]   - Kiểm tra cập nhật
   [green]exit[/green]      - Thoát chat""",
         "chat_voice_not_available": "[yellow]Thu âm không khả dụng. Cài: pip install sounddevice[/yellow]",
@@ -292,6 +293,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "template_empty": "[dim]Chưa có template nào.[/dim]",
         "template_applied": "[dim]Đã áp dụng template '{name}'[/dim]",
         "template_usage": "[dim]Sử dụng: /template use name | /template add name content | /template[/dim]",
+        
+        # Theme system
+        "theme_list_title": "[bold cyan]\ud83c\udfa8 Themes khả dụng:[/bold cyan]",
+        "theme_current": "[dim]Theme hiện tại: {name}[/dim]",
+        "theme_switched": "[green]Đã chuyển sang theme '{name}'[/green]",
+        "theme_not_found": "[yellow]Không tìm thấy theme '{name}'[/yellow]",
+        "theme_usage": "[dim]Sử dụng: /theme [name] - Các theme: default, dark, light, ocean, forest[/dim]",
 
         # Agent handler
         "agent_project_name_default": "Không có tên",
@@ -392,18 +400,19 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 
         # Chat slash commands
         "chat_help_title": "[bold cyan]\ud83d\udcd6 Chat Commands:[/bold cyan]",
-        "chat_help_content": """  [green]/help[/green]     - Show this help
-  [green]/tools[/green]    - List available tools
-  [green]/alias[/green]    - Manage shortcuts
+        "chat_help_content": """  [green]/help[/green]     - Show help
+  [green]/tools[/green]    - List tools
+  [green]/alias[/green]    - Manage aliases
   [green]/template[/green] - Manage templates
-  [green]/rag[/green]      - Toggle RAG mode
-  [green]/clear[/green]    - Clear chat history
-  [green]/export[/green]   - Export conversation
+  [green]/theme[/green]    - Change theme
+  [green]/rag[/green]      - Toggle RAG
+  [green]/clear[/green]    - Clear history
+  [green]/export[/green]   - Export chat
   [green]/model[/green]    - View/switch model
   [green]/save[/green]     - Save session
   [green]/load[/green]     - Load session
-  [green]/history[/green]  - View/search history
-  [green]/update[/green]   - Check for updates
+  [green]/history[/green]  - Search history
+  [green]/update[/green]   - Check updates
   [green]exit[/green]      - Exit chat""",
         "chat_voice_not_available": "[yellow]Voice recording not available. Install: pip install sounddevice[/yellow]",
         "chat_no_audio": "[yellow]No audio recorded.[/yellow]",
@@ -441,6 +450,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "template_empty": "[dim]No templates defined.[/dim]",
         "template_applied": "[dim]Applied template '{name}'[/dim]",
         "template_usage": "[dim]Usage: /template use name | /template add name content | /template[/dim]",
+        
+        # Theme system
+        "theme_list_title": "[bold cyan]\ud83c\udfa8 Available themes:[/bold cyan]",
+        "theme_current": "[dim]Current theme: {name}[/dim]",
+        "theme_switched": "[green]Switched to theme '{name}'[/green]",
+        "theme_not_found": "[yellow]Theme '{name}' not found[/yellow]",
+        "theme_usage": "[dim]Usage: /theme [name] - Available: default, dark, light, ocean, forest[/dim]",
 
         "memory_reset_confirm": "Are you sure you want to delete the long-term memory database (memory_db)? (y/n): ",
         "memory_reset_cancelled": "[yellow]Cancelled memory reset.[/yellow]",

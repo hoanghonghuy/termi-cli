@@ -446,6 +446,30 @@ class ChatService:
                         console.print(i18n.tr(language, "template_usage"))
                         continue
 
+                # Theme management
+                if prompt.strip().lower().startswith("/theme"):
+                    from termi_cli.application import theme_manager
+                    parts = prompt.strip().split(maxsplit=1)
+                    if len(parts) == 1:
+                        # List themes and show current
+                        console.print(i18n.tr(language, "theme_list_title"))
+                        current = theme_manager.get_current_theme()
+                        for name in theme_manager.list_themes():
+                            marker = " ✓" if name == current else ""
+                            theme = theme_manager.get_theme_info(name)
+                            console.print(f"  {name}{marker}")
+                        console.print(i18n.tr(language, "theme_current", name=current))
+                    else:
+                        theme_name = parts[1].strip().lower()
+                        if theme_manager.set_theme(theme_name):
+                            console.print(i18n.tr(language, "theme_switched", name=theme_name))
+                            # Show preview
+                            console.print(theme_manager.preview_theme(theme_name))
+                        else:
+                            console.print(i18n.tr(language, "theme_not_found", name=theme_name))
+                            console.print(i18n.tr(language, "theme_usage"))
+                    continue
+
                 # Search/view history
                 if prompt.strip().lower().startswith("/history"):
                     parts = prompt.strip().split(maxsplit=1)
