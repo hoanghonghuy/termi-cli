@@ -248,6 +248,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
   [green]/alias[/green]    - Quản lý phím tắt
   [green]/template[/green] - Quản lý templates
   [green]/theme[/green]    - Đổi theme
+  [green]/memory[/green]   - Quản lý ký ức
   [green]/rag[/green]      - Bật/tắt RAG
   [green]/clear[/green]    - Xóa lịch sử
   [green]/export[/green]   - Xuất chat
@@ -276,7 +277,15 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_history_found": "[green]Tìm thấy {count} kết quả:[/green]",
         "chat_history_no_match": "[yellow]Không tìm thấy kết quả.[/yellow]",
         "chat_checking_update": "[dim]Đang kiểm tra cập nhật...[/dim]",
+        "chat_ai_thinking": "Đang suy nghĩ...",
         
+        # Memory system
+        "memory_list_title": "[bold cyan]Ký ức:[/bold cyan]",
+        "memory_added": "[green]Đã ghi nhớ: {content}[/green]",
+        "memory_deleted": "[green]Đã quên ký ức ID {id}[/green]",
+        "memory_not_found": "[yellow]Không tìm thấy ký ức ID {id}[/yellow]",
+        "memory_usage": "[dim]Sử dụng: /memory list | /memory add content | /memory delete id | /memory search query[/dim]",
+
         # Alias system
         "alias_added": "[green]Đã thêm alias '{name}' -> '{cmd}'[/green]",
         "alias_removed": "[green]Đã xóa alias '{name}'[/green]",
@@ -405,6 +414,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
   [green]/alias[/green]    - Manage aliases
   [green]/template[/green] - Manage templates
   [green]/theme[/green]    - Change theme
+  [green]/memory[/green]   - Manage memory
   [green]/rag[/green]      - Toggle RAG
   [green]/clear[/green]    - Clear history
   [green]/export[/green]   - Export chat
@@ -433,7 +443,15 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_history_found": "[green]Found {count} matches:[/green]",
         "chat_history_no_match": "[yellow]No matches found.[/yellow]",
         "chat_checking_update": "[dim]Checking for updates...[/dim]",
-        
+        "chat_ai_thinking": "Thinking...",
+
+        # Memory system
+        "memory_list_title": "[bold cyan]Memories:[/bold cyan]",
+        "memory_added": "[green]Memorized: {content}[/green]",
+        "memory_deleted": "[green]Forgot memory ID {id}[/green]",
+        "memory_not_found": "[yellow]Memory ID {id} not found[/yellow]",
+        "memory_usage": "[dim]Usage: /memory list | /memory add content | /memory delete id | /memory search query[/dim]",
+
         # Alias system
         "alias_added": "[green]Added alias '{name}' -> '{cmd}'[/green]",
         "alias_removed": "[green]Removed alias '{name}'[/green]",

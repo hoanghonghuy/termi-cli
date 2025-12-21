@@ -126,52 +126,20 @@ def generate_text(model_name: str, prompt: str, system_instruction: str | None =
     return get_response_text(response)
 
 
-def _load_plugin_tools() -> dict[str, callable]:  # type: ignore[name-defined]
-    """Tải thêm tools từ thư mục plugin `APP_DIR/plugins`.
+def termi_tool(func):
+    """Decorator to mark a function as a Termi plugin tool."""
+    func._is_termi_tool = True
+    return func
 
-    Mỗi file `.py` (không bắt đầu bằng `_`) có thể định nghĩa biến
-    `PLUGIN_TOOLS` là một dict: tên_tool (str) -> callable.
-    Các key trùng với core tools sẽ bị bỏ qua để tránh override ngầm.
-    """
 
-    plugin_tools: dict[str, callable] = {}
-    plugins_dir = Path(APP_DIR) / "plugins"
-    if not plugins_dir.exists() or not plugins_dir.is_dir():
-        return plugin_tools
-
-    for path in plugins_dir.glob("*.py"):
-        if path.name.startswith("_"):
-            continue
-
-        module_name = f"termi_cli_plugins.{path.stem}"
-        try:
-            spec = importlib.util.spec_from_file_location(module_name, path)
-            if spec is None or spec.loader is None:
-                logger.warning("Không thể tạo spec cho plugin '%s'", path)
-                continue
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)  # type: ignore[assignment]
-
-            tools_dict = getattr(module, "PLUGIN_TOOLS", None)
-            if not isinstance(tools_dict, dict):
-                logger.warning("Plugin '%s' không có dict PLUGIN_TOOLS hợp lệ", path)
-                continue
-            for name, func in tools_dict.items():
-                if not callable(func):
-                    logger.warning("Tool '%s' trong plugin '%s' không callable, bỏ qua", name, path)
-                    continue
-                # Không override core tools
-                if name in plugin_tools:
-                    logger.warning("Trùng tên tool plugin '%s' trong '%s', bỏ qua", name, path)
-                    continue
-                plugin_tools[name] = func
-                logger.info("Đã đăng ký plugin tool '%s' từ '%s'", name, path)
-        except Exception:
-            # Plugin lỗi sẽ bị bỏ qua, không làm hỏng toàn bộ CLI
-            logger.exception("Lỗi khi load plugin '%s'", path)
-            continue
-
-    return plugin_tools
+def _load_plugin_tools() -> dict[str, callable]:
+    """Tải thêm tools từ thư mục plugin thông qua plugin_manager."""
+    try:
+        from termi_cli.application import plugin_manager
+        return plugin_manager.load_plugins(verbose=False)
+    except ImportError:
+        # Trong trường hợp application.plugin_manager chưa sẵn sàng hoặc lỗi cyclic import
+        return {}
 
 
 # Ánh xạ tên tool tới hàm thực thi

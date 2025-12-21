@@ -754,11 +754,16 @@ class ChatService:
                     effective_system += f"\n\n{tool_usage_hint}"
 
                     try:
-                        response_text = api.generate_text(
-                            model_name,
-                            messages_for_api,  # Truyền list messages
-                            system_instruction=effective_system,
-                        )
+                        # Dùng spinner thay vì text tĩnh
+                        spinner_text = i18n.tr(language, "chat_ai_thinking") # Cần thêm key này vào i18n nếu chưa có hoặc dùng tạm text
+                        if not spinner_text or spinner_text.startswith("Key"): spinner_text = "Thinking..."
+                        
+                        with console.status(f"[{style_system}]{spinner_text}[/{style_system}]", spinner="dots"):
+                            response_text = api.generate_text(
+                                model_name,
+                                messages_for_api,  # Truyền list messages
+                                system_instruction=effective_system,
+                            )
                     except (
                         api.DeepseekInsufficientBalance,
                         api.GroqInsufficientBalance,
