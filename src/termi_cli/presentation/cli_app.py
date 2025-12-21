@@ -77,6 +77,18 @@ def run_cli(
         )
         return
 
+    # Config wizard
+    if getattr(args, "setup", False):
+        from termi_cli.application.config_wizard import run_config_wizard
+        run_config_wizard(language)
+        return
+
+    # Check for updates
+    if getattr(args, "check_update", False):
+        from termi_cli.application.update_checker import get_update_message
+        console.print(get_update_message(language))
+        return
+
     # Cho phép reset toàn bộ config về mặc định (xoá file config.json hiện tại)
     if getattr(args, "reset_config", False):
         if "PYTEST_CURRENT_TEST" in os.environ:

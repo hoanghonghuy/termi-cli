@@ -197,6 +197,26 @@ def create_parser(language: str = "vi"):
         ),
     )
     model_group.add_argument(
+        "--setup",
+        action="store_true",
+        help=(
+            "Run interactive configuration wizard."
+            if language == "en"
+            else
+            "Chạy wizard cấu hình tương tác."
+        ),
+    )
+    model_group.add_argument(
+        "--check-update",
+        action="store_true",
+        help=(
+            "Check for available updates."
+            if language == "en"
+            else
+            "Kiểm tra cập nhật khả dụng."
+        ),
+    )
+    model_group.add_argument(
         "--verbose",
         action="store_true",
         help=(
