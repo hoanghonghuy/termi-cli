@@ -545,6 +545,17 @@ def create_parser(language: str = "vi"):
         ),
     )
     io_group.add_argument(
+        "--file",
+        nargs="+",
+        type=str,
+        help=(
+            "Path to one or more text files to attach to the context."
+            if language == "en"
+            else
+            "Đường dẫn tới một hoặc nhiều file văn bản để đính kèm ngữ cảnh."
+        ),
+    )
+    io_group.add_argument(
         "-rd",
         "--read-dir",
         action="store_true",

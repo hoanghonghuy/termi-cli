@@ -68,6 +68,7 @@ initialize_openrouter_api_keys = http_providers.initialize_openrouter_api_keys
 is_openrouter_model = http_providers.is_openrouter_model
 is_ollama_model = http_providers.is_ollama_model
 is_ollama_cloud_model = http_providers.is_ollama_cloud_model
+is_generic_openai_model = http_providers.is_generic_openai_model
 
 get_http_metrics = http_providers.get_http_metrics
 

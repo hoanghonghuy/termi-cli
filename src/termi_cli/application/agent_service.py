@@ -168,6 +168,8 @@ def _get_safe_agent_model(console: Console, config: dict) -> str:
             provider = "groq"
         elif api.is_openrouter_model(agent_model):
             provider = "openrouter"
+        elif api.is_generic_openai_model(agent_model):
+            provider = "openai_compatible"
 
     if provider == "gemini":
         return agent_model
@@ -296,7 +298,9 @@ class AgentExecutionContext:
                     and (
                         agent_model_name.startswith("deepseek-")
                         or agent_model_name.startswith("groq-")
+                        or agent_model_name.startswith("groq-")
                         or api.is_openrouter_model(agent_model_name)
+                        or api.is_generic_openai_model(agent_model_name)
                     )
                 )
                 or api.is_ollama_model(agent_model_name)
@@ -369,7 +373,9 @@ class AgentService:
                             and (
                                 agent_model_name.startswith("deepseek-")
                                 or agent_model_name.startswith("groq-")
+                                or agent_model_name.startswith("groq-")
                                 or api.is_openrouter_model(agent_model_name)
+                                or api.is_generic_openai_model(agent_model_name)
                             )
                         )
                         or api.is_ollama_model(agent_model_name)
@@ -726,7 +732,9 @@ class AgentService:
                     and (
                         agent_model_name.startswith("deepseek-")
                         or agent_model_name.startswith("groq-")
+                        or agent_model_name.startswith("groq-")
                         or api.is_openrouter_model(agent_model_name)
+                        or api.is_generic_openai_model(agent_model_name)
                     )
                 )
                 or api.is_ollama_model(agent_model_name)

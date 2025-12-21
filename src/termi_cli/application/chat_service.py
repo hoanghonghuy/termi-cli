@@ -23,6 +23,7 @@ from termi_cli.handlers.core_handler import (
     confirm_and_write_file,
 )
 from termi_cli.application.history_service import HistoryService, HISTORY_DIR
+from termi_cli.infrastructure import http_providers
 
 
 @dataclass
@@ -268,14 +269,15 @@ class ChatService:
         args: argparse.Namespace,
         system_instruction: str,
     ) -> None:
-        """Chế độ chat dùng HTTP providers (DeepSeek/Groq/OpenRouter) với tool-calls JSON cơ bản."""
+        """Chế độ chat dùng HTTP providers (DeepSeek/Groq/OpenRouter) với Multi-modal support."""
 
         opts = HttpChatOptions.from_args(config, args)
         language = opts.language
         console.print(i18n.tr(language, "chat_mode_intro"))
 
         model_name = opts.model_name
-        dialogue: list[tuple[str, str]] = []  # (role, text) với role in {"user", "assistant"}
+        # Messages list chuẩn OpenAI: [{"role": "user", "content": ...}]
+        messages: list[dict] = []
 
         tool_names = ", ".join(sorted(api.AVAILABLE_TOOLS.keys()))
         tool_usage_hint = (
@@ -283,32 +285,134 @@ class ChatService:
             '{"tool_name": "<name>", "tool_args": { ... }} without Markdown fences. '
             f"Valid tool_name values: {tool_names}. If no tool is needed, answer normally."
         )
+        
+        # Buffer cho attachment (ảnh/file) chờ gửi ở lượt tiếp theo
+        pending_images: list[str] = []
+        pending_files_content: list[str] = []
+
+        # Xử lý startup arguments (--image, --file)
+        if getattr(args, "image", None):
+            for img_path in args.image:
+                if os.path.exists(img_path):
+                    b64_img = http_providers.encode_image_to_base64(img_path)
+                    if b64_img:
+                        pending_images.append(b64_img)
+                        console.print(i18n.tr(language, "chat_image_added", path=img_path))
+                    else:
+                        console.print(i18n.tr(language, "chat_image_load_failed", path=img_path, error="Encoding failed"))
+                else:
+                    console.print(i18n.tr(language, "error_image_not_found", path=img_path))
+
+        if getattr(args, "file", None):
+            for file_path in args.file:
+                if os.path.exists(file_path):
+                    try:
+                        with open(file_path, "r", encoding="utf-8") as f:
+                            content = f.read()
+                            formatted_content = f"\n\n--- File: {file_path} ---\n{content}\n---"
+                            pending_files_content.append(formatted_content)
+                            console.print(i18n.tr(language, "chat_file_added", path=file_path))
+                    except Exception as e:
+                        console.print(i18n.tr(language, "chat_file_read_failed", path=file_path, error=e))
+                else:
+                    console.print(i18n.tr(language, "code_file_not_found", path=file_path))
+
+        initial_prompt = getattr(args, "prompt", None)  # Handles: termi chat "prompt" ...
 
         try:
             user_label = i18n.tr(language, "history_user_label")
             ai_label = i18n.tr(language, "history_ai_label")
+            
             while True:
-                prompt = console.input(f"\n{user_label} ")
+                # Hiển thị chỉ báo nếu có pending attachment
+                if pending_images or pending_files_content:
+                    console.print(f"[dim](Pending: {len(pending_images)} images, {len(pending_files_content)} files)[/dim]")
+
+                if initial_prompt:
+                    prompt = initial_prompt
+                    initial_prompt = None
+                    console.print(f"\n{user_label} {prompt}")
+                else:
+                    prompt = console.input(f"\n{user_label} ")
+                
+                # Xử lý lệnh slash command
+                if prompt.startswith("/image "):
+                    image_path = prompt[7:].strip().strip('"').strip("'")
+                    if os.path.exists(image_path):
+                        b64_img = http_providers.encode_image_to_base64(image_path)
+                        if b64_img:
+                            pending_images.append(b64_img)
+                            console.print(i18n.tr(language, "chat_image_added", path=image_path))
+                        else:
+                            console.print(i18n.tr(language, "chat_image_load_failed", path=image_path, error="Encoding failed"))
+                    else:
+                        console.print(i18n.tr(language, "error_image_not_found", path=image_path))
+                    continue
+                
+                if prompt.startswith("/file "):
+                    file_path = prompt[6:].strip().strip('"').strip("'")
+                    if os.path.exists(file_path):
+                        try:
+                            with open(file_path, "r", encoding="utf-8") as f:
+                                content = f.read()
+                                formatted_content = f"\n\n--- File: {file_path} ---\n{content}\n---"
+                                pending_files_content.append(formatted_content)
+                                console.print(i18n.tr(language, "chat_file_added", path=file_path))
+                        except Exception as e:
+                            console.print(i18n.tr(language, "chat_file_read_failed", path=file_path, error=e))
+                    else:
+                        console.print(i18n.tr(language, "code_file_not_found", path=file_path))
+                    continue
+
                 if prompt.lower().strip() in ["exit", "quit", "q"]:
                     break
-                if not prompt.strip():
+                
+                # Nếu prompt rỗng nhưng có pending data thì vẫn gửi
+                if not prompt.strip() and not pending_images and not pending_files_content:
                     continue
 
                 console.print(f"\n{ai_label}")
 
-                dialogue.append(("user", prompt))
+                # Xây dựng nội dung tin nhắn User
+                user_text_part = prompt
+                if pending_files_content:
+                    user_text_part += "\n".join(pending_files_content)
+                
+                user_content: str | list[dict] = user_text_part
+                
+                # Nếu có ảnh, phải chuyển sang dạng list[dict] (OpenAI Vision format)
+                if pending_images:
+                    content_list = []
+                    if user_text_part:
+                        content_list.append({"type": "text", "text": user_text_part})
+                    for img_b64 in pending_images:
+                        content_list.append({
+                            "type": "image_url",
+                            "image_url": {
+                                "url": img_b64
+                            }
+                        })
+                    user_content = content_list
+                
+                # Reset pending buffers
+                pending_images = []
+                pending_files_content = []
+
+                # Add to history
+                messages.append({"role": "user", "content": user_content})
 
                 mini_agent_response = None
                 if not opts.mini_agent_off:
+                    # Mini agent chỉ chạy với text thuần túy
                     mini_agent_response = mini_agent.run_http_mini_agent(
-                        prompt_text=prompt,
-                        user_intent=prompt,
+                        prompt_text=user_text_part,
+                        user_intent=user_text_part,
                         config=config,
                     )
 
                 if mini_agent_response:
                     console.print(mini_agent_response)
-                    dialogue.append(("assistant", mini_agent_response))
+                    messages.append({"role": "assistant", "content": mini_agent_response})
                     utils.execute_suggested_commands(mini_agent_response, console)
                     continue
 
@@ -316,26 +420,27 @@ class ChatService:
                 tool_loop_count = 0
 
                 while True:
-                    conversation_text_lines: list[str] = []
-                    for role, text in dialogue:
-                        label = "User" if role == "user" else "AI"
-                        conversation_text_lines.append(f"{label}: {text}")
-                    conversation_text = "\n".join(conversation_text_lines)
-
-                    composite_prompt = (
-                        "You are a helpful assistant in a multi-turn conversation. "
-                        "Continue the conversation by replying to the last user message, "
-                        "taking into account the entire dialogue so far.\n\n"
-                        f"--- CONVERSATION SO FAR ---\n{conversation_text}\n---\n\n"
-                        f"{tool_usage_hint}\n\n"
-                        "Your reply (do not repeat previous messages):"
-                    )
+                    # Inject System Instruction & Tool Hint vào context
+                    # Vì http_providers._build_http_messages sẽ tự thêm system instruction nếu chưa có
+                    # nhưng ở đây ta quản lý messages stateful, nên ta sẽ truyền messages list trực tiếp.
+                    # Tuy nhiên, ta cần inject tool_usage_hint vào system instruction hoặc user message cuối.
+                    # Cách tốt nhất: Inject vào system instruction tạm thời cho lần gọi này? 
+                    # Hoặc append vào user text cuối cùng?
+                    # Để đơn giản, ta append tool hint vào message cuối nếu nó là user text.
+                    # Nhưng ta không muốn lưu hint vào lịch sử hiển thị.
+                    
+                    # Clone messages để gửi API
+                    messages_for_api = messages[:]
+                    
+                    # Thêm tool hint vào system instruction
+                    effective_system = system_instruction if system_instruction else ""
+                    effective_system += f"\n\n{tool_usage_hint}"
 
                     try:
                         response_text = api.generate_text(
                             model_name,
-                            composite_prompt,
-                            system_instruction=system_instruction,
+                            messages_for_api,  # Truyền list messages
+                            system_instruction=effective_system,
                         )
                     except (
                         api.DeepseekInsufficientBalance,
@@ -370,7 +475,8 @@ class ChatService:
                         )
                         if choice not in ("y", "yes"):
                             return
-
+                        
+                        # Fallback logic cũ (giữ nguyên)
                         console.print(
                             i18n.tr(
                                 language,
@@ -378,7 +484,6 @@ class ChatService:
                                 fallback_model=fallback_model,
                             )
                         )
-
                         from termi_cli.handlers.core_handler import (  # avoid circular
                             build_system_instruction,
                         )
@@ -434,7 +539,8 @@ class ChatService:
                             console.print(
                                 f"[yellow]Tool '{tool_name}' không tồn tại trong AVAILABLE_TOOLS.[/yellow]"
                             )
-                            dialogue.append(("assistant", response_text))
+                            # Add assistant response w/ invalid tool
+                            messages.append({"role": "assistant", "content": response_text})
                             console.print(response_text)
                             utils.execute_suggested_commands(
                                 response_text, console
@@ -461,24 +567,37 @@ class ChatService:
                             result = f"Error executing tool '{tool_name}': {e}"
 
                         observation = str(result)
-                        console.print(
-                            f"[bold cyan]Tool '{tool_name}' result:[/bold cyan] {observation}"
-                        )
-                        dialogue.append(
-                            (
-                                "assistant",
-                                f"[TOOL {tool_name}] {observation}",
+                        if getattr(args, "verbose", False):
+                            console.print(
+                                f"[bold cyan]Tool '{tool_name}' result:[/bold cyan] {observation}"
                             )
+                        else:
+                            console.print(f"[dim]⚙️  Used tool '{tool_name}'...[/dim]")
+                        
+                        # Append tool result as tool role or user role depending on provider support.
+                        # For simplicity in "deepseek" mode (often generic OpenAI), we append as 'user' role saying "Tool output: ..." 
+                        # OR if the model supports 'tool' role. Generic OpenAI usually supports 'tool' role if function calling is used, 
+                        # but here we are doing "implied" tool use via JSON. 
+                        # Best approach for generic chat models: Append as User message containing the observation.
+                        messages.append(
+                            {
+                                "role": "user",
+                                "content": f"--- Tool '{tool_name}' Output ---\n{observation}\n---"
+                            }
                         )
                         continue
 
-                    dialogue.append(("assistant", response_text))
+                    # Normal response handling
+                    messages.append({"role": "assistant", "content": response_text})
                     console.print(response_text)
                     utils.execute_suggested_commands(response_text, console)
                     break
 
         except (KeyboardInterrupt, EOFError):
             console.print(i18n.tr(language, "interrupted_by_user"))
+
+        if not messages:
+            return
 
         if not os.path.exists(HISTORY_DIR):
             os.makedirs(HISTORY_DIR)
@@ -494,11 +613,24 @@ class ChatService:
                 console.print(i18n.tr(language, "chat_ai_thinking_title"))
 
                 conversation_summary = ""
-                for role, text in dialogue:
+                for msg in messages:
+                    role = msg.get("role", "unknown")
+                    content = msg.get("content", "")
+                    text_content = ""
+                    if isinstance(content, str):
+                        text_content = content
+                    elif isinstance(content, list):
+                        for part in content:
+                            if isinstance(part, dict):
+                                if part.get("type") == "text":
+                                    text_content += part.get("text", "") + "\n"
+                                elif part.get("type") == "image_url":
+                                    text_content += "[Image Attachment]\n"
+                    
                     if role == "user":
-                        conversation_summary += f"User: {text}\n"
+                        conversation_summary += f"User: {text_content}\n"
                     elif role == "assistant":
-                        conversation_summary += f"AI: {text}\n"
+                        conversation_summary += f"AI: {text_content}\n"
 
                 prompt_for_title = (
                     "Based on the following full conversation transcript, create a very short, "
@@ -520,10 +652,27 @@ class ChatService:
             save_path = os.path.join(HISTORY_DIR, filename)
 
             history_payload = []
-            for role, text in dialogue:
+            for msg in messages:
+                role = msg.get("role", "model")
+                if role == "assistant":
+                    role = "model"
+                content = msg.get("content", "")
+                parts = []
+                
+                if isinstance(content, str):
+                    parts.append({"text": content})
+                elif isinstance(content, list):
+                    for part in content:
+                        if isinstance(part, dict):
+                            if part.get("type") == "text":
+                                parts.append({"text": part.get("text", "")})
+                            elif part.get("type") == "image_url":
+                                # Placeholder for history text view
+                                parts.append({"text": "[Image Attachment]"})
+
                 entry = {
-                    "role": "user" if role == "user" else "model",
-                    "parts": [{"text": text}],
+                    "role": role,
+                    "parts": parts,
                 }
                 history_payload.append(entry)
 
@@ -550,3 +699,4 @@ class ChatService:
                     error=e,
                 )
             )
+

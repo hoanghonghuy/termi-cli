@@ -121,6 +121,8 @@ def _is_http_model_name(model_name: str) -> bool:
         return True
     if api.is_ollama_cloud_model(model_name):
         return True
+    if api.is_generic_openai_model(model_name):
+        return True
     return False
 
 
@@ -205,7 +207,7 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
             sys.stdin = io.TextIOWrapper(sys.stdin.buffer, encoding='utf-8', errors='ignore')
             piped_input = sys.stdin.read().strip()
     
-    if not any([args.prompt, piped_input, args.image]):
+    if not any([args.prompt, piped_input, args.image, getattr(args, "file", None)]):
         if not (history and args.print_log and (args.chat or args.topic)):
             console.print(i18n.tr(language, "error_need_prompt_or_action"))
             parser.print_help()
@@ -254,6 +256,20 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
                 console.print(i18n.tr(language, "error_opening_image", path=image_path, error=e))
                 return
         console.print(i18n.tr(language, "images_loaded_count", count=len(args.image)))
+
+    if getattr(args, "file", None):
+        for file_path in args.file:
+            if os.path.exists(file_path):
+                try:
+                    with open(file_path, "r", encoding="utf-8") as f:
+                        content = f.read()
+                        prompt_text += f"\n\n--- File: {file_path} ---\n{content}\n---"
+                except Exception as e:
+                    console.print(i18n.tr(language, "chat_file_read_failed", path=file_path, error=e))
+                    return
+            else:
+                console.print(i18n.tr(language, "code_file_not_found", path=file_path))
+                return
     
     if prompt_text:
         prompt_parts.append(prompt_text)
@@ -281,9 +297,31 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
                 )
 
             if not response_text:
+                # Prepare prompt for HTTP providers (Text or List[dict])
+                final_prompt: str | list[dict] = prompt_text
+                
+                # If images are present, construct OpenAI-compatible message list
+                # Note: HTTP providers use args.image paths directly via encode helper
+                if args.image:
+                    from termi_cli.infrastructure import http_providers
+                    content_list = []
+                    if prompt_text:
+                        content_list.append({"type": "text", "text": prompt_text})
+                    
+                    for img_path in args.image:
+                        if os.path.exists(img_path):
+                            b64 = http_providers.encode_image_to_base64(img_path)
+                            if b64:
+                                content_list.append({"type": "image_url", "image_url": {"url": b64}})
+                            else:
+                                console.print(f"[bold red]Failed to encode image: {img_path}[/bold red]")
+                                return
+                    
+                    final_prompt = [{"role": "user", "content": content_list}]
+
                 response_text = api.generate_text(
                     model_name,
-                    prompt_text,
+                    final_prompt,
                     system_instruction=system_instruction_str,
                 )
         except (
@@ -436,6 +474,8 @@ def _preprocess_subcommands(argv):
         return ["--chat", *argv[1:]]
     if first == "agent":
         return ["--agent", *argv[1:]]
+    if first == "set-model":
+        return ["--set-model", *argv[1:]]
 
     return argv
 
@@ -466,6 +506,14 @@ def main(provided_args=None):
     console = Console()
     config = load_config()
     language = config.get("language", "vi")
+
+    # Inject Generic OpenAI config to env vars for http_providers.py to pick up
+    if "openai_compatible" in config:
+        oa_conf = config["openai_compatible"]
+        if oa_conf.get("base_url"):
+            os.environ["OPENAI_COMPATIBLE_BASE_URL"] = oa_conf["base_url"]
+        if oa_conf.get("api_key"):
+            os.environ["OPENAI_COMPATIBLE_API_KEY"] = oa_conf["api_key"]
 
     try:
         # Nếu tests truyền sẵn một argparse.Namespace thì dùng trực tiếp

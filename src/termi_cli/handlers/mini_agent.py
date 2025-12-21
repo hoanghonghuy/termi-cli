@@ -128,6 +128,11 @@ def run_http_mini_agent(prompt_text: str, user_intent: str, config: dict) -> Opt
             continue
 
         logger.info("Mini-agent khớp rule #%s (tool=%s, pass_prompt=%s)", rule.get("name", "?"), tool_name, pass_prompt)
+        
+        # Thông báo cho user biết Mini Agent đang can thiệp
+        from rich.console import Console
+        _console = Console()
+        _console.print(f"[dim italic]🤖 Mini Agent đã trả lời bằng tool: {tool_name}[/dim italic]")
 
         if pass_prompt:
             query = user_intent or prompt_text or ""

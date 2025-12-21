@@ -7,6 +7,9 @@ ra khỏi handler để handler chỉ còn vai trò I/O/CLI.
 from __future__ import annotations
 
 import subprocess
+import urllib.request
+import json
+import os
 
 from rich.console import Console
 from rich.table import Table
@@ -50,6 +53,7 @@ class ConfigService:
                 i18n.tr(language, "config_provider_desc_openrouter"),
             ),
             ("ollama", "⚫ Ollama", i18n.tr(language, "config_provider_desc_ollama")),
+            ("openai_compatible", "⚪ Generic OpenAI", i18n.tr(language, "config_provider_desc_openai_compatible")),
         ]
 
         table = Table(title=i18n.tr(language, "config_provider_selection_title"))
@@ -95,6 +99,9 @@ class ConfigService:
                 console.print(i18n.tr(language, "config_model_provider_hint_ollama"))
             else:
                 console.print(i18n.tr(language, "config_model_provider_hint_gemini"))
+            
+            if api.is_generic_openai_model(model_name):
+                 console.print(i18n.tr(language, "config_model_provider_hint_openai_compatible"))
 
         def _display_name(model_name: str) -> str:
             label = model_labels.get(model_name)
@@ -363,6 +370,116 @@ class ConfigService:
             )
 
             self._repository.save(config)
+            return
+
+        # --- Nhánh Generic OpenAI Compatible ---
+        if provider_key == "openai_compatible":
+            # Load default or current values
+            current_conf = config.get("openai_compatible", {})
+            default_url = current_conf.get("base_url") or os.getenv("OPENAI_COMPATIBLE_BASE_URL") or "http://localhost:8317/v1"
+            default_key = current_conf.get("api_key") or os.getenv("OPENAI_COMPATIBLE_API_KEY") or "proxypal-local"
+            
+            # 1. Ask for Base URL
+            new_url = console.input(
+                i18n.tr(language, "config_openai_compatible_url_prompt", default=default_url), 
+                markup=False
+            ).strip()
+            if not new_url:
+                new_url = default_url
+            
+            # 2. Ask for API Key
+            display_key_default = default_key[:4] + "..." if len(default_key) > 4 else default_key
+            new_key = console.input(
+                i18n.tr(language, "config_openai_compatible_key_prompt", default=display_key_default),
+                markup=False
+            ).strip()
+            if not new_key:
+                new_key = default_key
+                
+            # 3. Try fetching models
+            console.print(i18n.tr(language, "config_openai_compatible_fetching_models", url=new_url))
+            
+            fetched_models = []
+            try:
+                # Helper internal to call models endpoint
+                req_url = new_url.rstrip("/")
+                if req_url.endswith("/v1"):
+                     req_url += "/models"
+                else:
+                     req_url += "/v1/models"
+                
+                req = urllib.request.Request(req_url, method="GET")
+                req.add_header("Authorization", f"Bearer {new_key}")
+                with urllib.request.urlopen(req, timeout=5) as resp:
+                    data = json.load(resp)
+                    # Support standard OpenAI format: {"data": [{"id": "model-id"}, ...]}
+                    if "data" in data and isinstance(data["data"], list):
+                        # Extract both ID and owned_by (provider)
+                        fetched_models = []
+                        for item in data["data"]:
+                            mid = item.get("id")
+                            provider = item.get("owned_by")
+                            if mid:
+                                fetched_models.append((mid, provider))
+            except Exception as e:
+                # 4. If fetch fails, ask for manual input
+                confirm_manual = console.input(
+                    i18n.tr(language, "config_openai_compatible_fetch_error", error=str(e)),
+                    markup=False
+                ).strip().lower()
+                if confirm_manual not in ("y", "yes"):
+                    console.print(i18n.tr(language, "config_selection_cancelled"))
+                    return
+
+            final_model = None
+            if fetched_models:
+                 # Show list to select
+                 table = Table(title=i18n.tr(language, "config_model_selection_title"))
+                 table.add_column("#", style="cyan")
+                 table.add_column("Model ID", style="magenta")
+                 table.add_column("Provider", style="green") # Show provider column
+                 
+                 for idx, (mid, provider) in enumerate(fetched_models, start=1):
+                     table.add_row(str(idx), mid, provider or "")
+                 console.print(table)
+                 
+                 # Logic select
+                 sel_idx = _select_index([m[0] for m in fetched_models], "config_openai_compatible_select_prompt")
+                 if sel_idx is not None:
+                     mid, provider = fetched_models[sel_idx]
+                     # Revert: Không tự động thêm provider prefix vì 'owned_by' có thể không phải là slug provider hợp lệ
+                     # Ví dụ: owned_by='iflow', nhưng server không chấp nhận 'iflow/model'
+                     final_model = mid
+            
+            if not final_model:
+                # Manual entry
+                final_model = console.input(
+                     i18n.tr(language, "config_openai_compatible_manual_model_prompt"),
+                     markup=False
+                ).strip()
+                
+            if not final_model:
+                 console.print(i18n.tr(language, "config_selection_cancelled"))
+                 return
+
+            # Add prefix
+            if not final_model.startswith("openai-compatible/"):
+                final_model = f"openai-compatible/{final_model}"
+
+            # Save config
+            config["openai_compatible"] = {
+                "base_url": new_url,
+                "api_key": new_key
+            }
+            config["default_model"] = final_model
+            config["code_model"] = final_model
+            config["commit_model"] = final_model
+            config["model_fallback_order"] = [final_model]
+            
+            self._repository.save(config)
+            
+            console.print(i18n.tr(language, "config_openai_compatible_saved", url=new_url))
+            console.print(i18n.tr(language, "config_default_model_set", model=final_model))
             return
 
         # --- Nhánh DeepSeek / Groq / OpenRouter ---

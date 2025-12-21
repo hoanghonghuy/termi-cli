@@ -11,7 +11,14 @@ import logging
 import os
 import time
 import urllib.error
+import logging
+import json
+import time
+import os
 import urllib.request
+import urllib.error
+import base64
+import mimetypes
 from abc import ABC, abstractmethod
 
 from rich.console import Console
@@ -26,6 +33,11 @@ _console = Console()
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")
 # Base URL cho Ollama Cloud REST API.
 OLLAMA_CLOUD_BASE_URL = os.getenv("OLLAMA_CLOUD_BASE_URL", "https://ollama.com")
+
+# Base URL cho Generic OpenAI Compatible API
+OPENAI_COMPATIBLE_BASE_URL = os.getenv("OPENAI_COMPATIBLE_BASE_URL", "http://localhost:8317/v1")
+# API Key cho Generic OpenAI Compatible API
+OPENAI_COMPATIBLE_API_KEY = os.getenv("OPENAI_COMPATIBLE_API_KEY", "proxypal-local")
 
 
 # --- DeepSeek integration (HTTP API, OpenAI-compatible) ---
@@ -389,11 +401,21 @@ def is_openrouter_model(model_name: str) -> bool:
         return False
     if model_name.startswith("ollama-cloud/"):
         return False
+    if model_name.startswith("openai-compatible/"):
+        return False
     return "/" in model_name
 
 
 def is_ollama_cloud_model(model_name: str) -> bool:
     return isinstance(model_name, str) and model_name.startswith("ollama-cloud/")
+
+
+def is_generic_openai_model(model_name: str) -> bool:
+    """Kiểm tra model có thuộc nhóm Generic OpenAI Compatible hay không.
+
+    Quy ước: model_name bắt đầu bằng "openai-compatible/", phần sau là tên model thực tế.
+    """
+    return isinstance(model_name, str) and model_name.startswith("openai-compatible/")
 
 
 def initialize_openrouter_api_keys() -> list[str]:
@@ -619,17 +641,100 @@ def _ollama_cloud_chat_completions(model_name: str, messages: list[dict]) -> dic
         raise
 
 
+# ---- Generic OpenAI helpers -----------------------------------------------
+
+
+def _generic_openai_chat_completions(model_name: str, messages: list[dict]) -> dict:
+    """Gọi Generic OpenAI Compatible Chat Completions.
+    
+    Sử dụng OPENAI_COMPATIBLE_BASE_URL và OPENAI_COMPATIBLE_API_KEY.
+    """
+    base_url = OPENAI_COMPATIBLE_BASE_URL.rstrip("/")
+    if base_url.endswith("/v1"):
+         # Nếu user đã nhập /v1 ở cuối biến env, giữ nguyên
+         url = f"{base_url}/chat/completions"
+    else:
+         # Nếu chưa có thì tự thêm, giả định convention chung
+         url = f"{base_url}/v1/chat/completions"
+    
+    # Một số provider yêu cầu chính xác URL, nên xử lý mềm dẻo:
+    # Nếu user nhập full path /v1/chat/completions trong base url -> lỗi, nên 
+    # ta đơn giản hoá: Luôn nối /chat/completions vào Base URL (vốn thường là .../v1).
+    # Tuy nhiên code trên đã handle khá ổn cho trường hợp chuẩn.
+    # Tinh chỉnh lại: luôn nối /chat/completions.
+    url = f"{base_url}/chat/completions"
+
+    payload = {
+        "model": model_name,
+        "messages": messages,
+        "stream": False,
+    }
+    data = json.dumps(payload).encode("utf-8")
+    
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {OPENAI_COMPATIBLE_API_KEY}",
+    }
+
+    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=60) as resp:
+            body = resp.read().decode("utf-8", errors="ignore")
+            return _parse_provider_json_response(body, "Generic OpenAI")
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="ignore")
+        _console.print(
+            f"[bold red]Lỗi HTTP khi gọi OpenAI Compatible (status={e.code}): {body}[/bold red]"
+        )
+        raise
+    except urllib.error.URLError as e:
+        _console.print(
+            f"[bold red]Không thể kết nối tới OpenAI Compatible API ({base_url}): {e}[/bold red]"
+        )
+        raise
+
+
 # ---- HTTP message helpers -------------------------------------------------
 
 
-def _build_http_messages(prompt: str, system_instruction: str | None) -> list[dict]:
-    """Xây dựng danh sách messages chuẩn cho các provider HTTP (system + user)."""
+def _build_http_messages(prompt: str | list[dict], system_instruction: str | None) -> list[dict]:
+    """Xây dựng danh sách messages chuẩn cho các provider HTTP (system + user).
+    
+    Nếu prompt là list[dict], coi như đã là danh sách messages (có thể bao gồm history),
+    ta chỉ chèn system instruction vào đầu nếu chưa có.
+    """
 
     messages: list[dict] = []
+    
+    if isinstance(prompt, list):
+        # Đã là message history
+        messages = prompt[:]  # Copy để không sửa list gốc
+        if system_instruction:
+            # Kiểm tra xem đã có system chưa
+            has_system = any(m.get("role") == "system" for m in messages)
+            if not has_system:
+                messages.insert(0, {"role": "system", "content": system_instruction})
+        return messages
+
     if system_instruction:
         messages.append({"role": "system", "content": system_instruction})
     messages.append({"role": "user", "content": prompt})
     return messages
+
+
+def encode_image_to_base64(image_path: str) -> str:
+    """Mã hóa file ảnh sang base64 string."""
+    try:
+        with open(image_path, "rb") as image_file:
+            encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
+            media_type, _ = mimetypes.guess_type(image_path)
+            if not media_type:
+                media_type = "image/jpeg"
+            return f"data:{media_type};base64,{encoded_string}"
+    except Exception as e:
+        logger.error(f"Error encoding image {image_path}: {e}")
+        return ""
 
 
 def _extract_openai_message_text(response: dict) -> str:
@@ -658,18 +763,20 @@ _HTTP_METRICS: dict[str, object] = {
 }
 
 
-def _http_cache_get(provider_kind: str, model_name: str, prompt: str, system_instruction: str | None) -> str | None:
-    key = (provider_kind, model_name, system_instruction, prompt)
+def _http_cache_get(provider_kind: str, model_name: str, prompt: str | list[dict], system_instruction: str | None) -> str | None:
+    prompt_key = json.dumps(prompt, sort_keys=True) if isinstance(prompt, list) else prompt
+    key = (provider_kind, model_name, system_instruction, prompt_key)
     return _http_response_cache.get(key)
 
 
-def _http_cache_set(provider_kind: str, model_name: str, prompt: str, system_instruction: str | None, value: str) -> None:
+def _http_cache_set(provider_kind: str, model_name: str, prompt: str | list[dict], system_instruction: str | None, value: str) -> None:
     if len(_http_response_cache) >= _HTTP_CACHE_MAX_ENTRIES:
         try:
             _http_response_cache.pop(next(iter(_http_response_cache)))
         except StopIteration:
             pass
-    key = (provider_kind, model_name, system_instruction, prompt)
+    prompt_key = json.dumps(prompt, sort_keys=True) if isinstance(prompt, list) else prompt
+    key = (provider_kind, model_name, system_instruction, prompt_key)
     _http_response_cache[key] = value
 
 
@@ -703,6 +810,8 @@ def get_http_metrics() -> dict:
 
 
 def detect_provider_kind(model_name: str) -> str:
+    if is_generic_openai_model(model_name):
+        return "openai_compatible"
     if is_ollama_cloud_model(model_name):
         return "ollama_cloud"
     if is_ollama_model(model_name):
@@ -718,19 +827,19 @@ def detect_provider_kind(model_name: str) -> str:
 
 class BaseProvider(ABC):
     @abstractmethod
-    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:  # pragma: no cover - interface
+    def generate(self, model_name: str, prompt: str | list[dict], system_instruction: str | None) -> str:  # pragma: no cover - interface
         raise NotImplementedError
 
 
 class DeepseekProvider(BaseProvider):
-    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:
+    def generate(self, model_name: str, prompt: str | list[dict], system_instruction: str | None) -> str:
         messages = _build_http_messages(prompt, system_instruction)
         response = _resilient_deepseek_api_call(model_name, messages)
         return _extract_openai_message_text(response)
 
 
 class GroqProvider(BaseProvider):
-    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:
+    def generate(self, model_name: str, prompt: str | list[dict], system_instruction: str | None) -> str:
         groq_model = _normalize_groq_model(model_name)
         messages = _build_http_messages(prompt, system_instruction)
         response = _resilient_groq_api_call(groq_model, messages)
@@ -738,14 +847,14 @@ class GroqProvider(BaseProvider):
 
 
 class OpenRouterProvider(BaseProvider):
-    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:
+    def generate(self, model_name: str, prompt: str | list[dict], system_instruction: str | None) -> str:
         messages = _build_http_messages(prompt, system_instruction)
         response = _resilient_openrouter_api_call(model_name, messages)
         return _extract_openai_message_text(response)
 
 
 class OllamaProvider(BaseProvider):
-    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:
+    def generate(self, model_name: str, prompt: str | list[dict], system_instruction: str | None) -> str:
         messages = _build_http_messages(prompt, system_instruction)
         ollama_model = model_name.split("/", 1)[1] if "/" in model_name else model_name
         response = _ollama_chat_completions(ollama_model, messages)
@@ -753,7 +862,7 @@ class OllamaProvider(BaseProvider):
 
 
 class OllamaCloudProvider(BaseProvider):
-    def generate(self, model_name: str, prompt: str, system_instruction: str | None) -> str:
+    def generate(self, model_name: str, prompt: str | list[dict], system_instruction: str | None) -> str:
         messages = _build_http_messages(prompt, system_instruction)
         cloud_model = model_name.split("/", 1)[1] if "/" in model_name else model_name
         response = _ollama_cloud_chat_completions(cloud_model, messages)
@@ -765,16 +874,27 @@ class OllamaCloudProvider(BaseProvider):
             return json.dumps(response, ensure_ascii=False)
 
 
+class GenericOpenAIProvider(BaseProvider):
+    def generate(self, model_name: str, prompt: str | list[dict], system_instruction: str | None) -> str:
+        messages = _build_http_messages(prompt, system_instruction)
+        # Bỏ prefix "openai-compatible/" lấy tên model thật
+        real_model = model_name.split("/", 1)[1] if "/" in model_name else model_name
+        response = _generic_openai_chat_completions(real_model, messages)
+        return _extract_openai_message_text(response)
+
+
 _PROVIDER_REGISTRY: dict[str, BaseProvider] = {
     "deepseek": DeepseekProvider(),
     "groq": GroqProvider(),
     "openrouter": OpenRouterProvider(),
     "ollama": OllamaProvider(),
+    "ollama": OllamaProvider(),
     "ollama_cloud": OllamaCloudProvider(),
+    "openai_compatible": GenericOpenAIProvider(),
 }
 
 
-def http_generate_text(model_name: str, prompt: str, system_instruction: str | None = None) -> str:
+def http_generate_text(model_name: str, prompt: str | list[dict], system_instruction: str | None = None) -> str:
     """Sinh text thuần từ một model HTTP provider.
 
     Bao gồm cache/metering đơn giản và phân phối tới từng provider.

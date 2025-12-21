@@ -78,6 +78,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_history_saved_to": "\n[bold yellow]Lịch sử trò chuyện đã được lưu vào '{path}'.[/bold yellow]",
         "chat_cannot_save_history_error": "\n[yellow]Không thể lưu lịch sử: {error}[/yellow]",
         "chat_generic_error": "[bold red]Lỗi: {error}[/bold red]",
+        "chat_image_added": "[green]Đã đính kèm ảnh: {path}[/green]",
+        "chat_image_load_failed": "[bold red]Lỗi: Không thể tải ảnh '{path}'. Chi tiết: {error}[/bold red]",
+        "chat_file_added": "[green]Đã đính kèm nội dung file: {path}[/green]",
+        "chat_file_read_failed": "[bold red]Lỗi: Không thể đọc file '{path}'. Chi tiết: {error}[/bold red]",
 
         # Config handler
         "config_fetching_models": "[bold green]Đang lấy danh sách các model khả dụng...[/bold green]",
@@ -100,12 +104,13 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "config_model_provider_hint_openrouter": "[dim]Provider: OpenRouter (HTTP chat/generate_text; không hỗ trợ Agent hoặc tool-calls Gemini).[/dim]",
         "config_model_provider_hint_ollama": "[dim]Provider: Ollama (model local qua daemon Ollama; hỗ trợ HTTP chat/generate_text cho các model như qwen3:8b, qwen3-coder:480b-cloud).[/dim]",
         "config_provider_selection_title": "Chọn nhà cung cấp model (provider)",
-        "config_provider_select_prompt": "Chọn provider (1=Gemini, 2=DeepSeek, 3=Groq, 4=OpenRouter, 5=Ollama): ",
+        "config_provider_select_prompt": "Chọn provider (1=Gemini, 2=DeepSeek, 3=Groq, 4=OpenRouter, 5=Ollama, 6=Generic OpenAI): ",
         "config_provider_desc_gemini": "Model trực tiếp từ Google Gemini, hỗ trợ đầy đủ Agent/tool-calls.",
         "config_provider_desc_deepseek": "Model DeepSeek qua HTTP OpenAI-compatible, tối ưu chi phí.",
         "config_provider_desc_groq": "Model Groq (LLaMA/Mixtral) chạy rất nhanh trên hạ tầng Groq.",
         "config_provider_desc_openrouter": "Model từ nhiều hãng khác nhau thông qua OpenRouter (bao gồm nhiều model miễn phí).",
         "config_provider_desc_ollama": "Model local qua daemon Ollama (ví dụ qwen3:8b, qwen3-coder:480b-cloud) không cần API key và không phụ thuộc quota cloud.",
+        "config_provider_desc_openai_compatible": "Kết nối tới bất kỳ server nào hỗ trợ chuẩn OpenAI (LocalAI, vLLM, LM Studio, v.v.).",
         "config_ollama_variant_prompt": "Chọn kiểu triển khai Ollama: 1=Local daemon, 2=Cloud (ollama.com) [mặc định 1]: ",
         "config_openrouter_intro_examples": "[dim]Gợi ý: bạn có thể copy ID model từ https://openrouter.ai/models (ví dụ: meta-llama/llama-3.1-8b-instruct, mistralai/mixtral-8x7b-instruct).[/dim]",
         "config_openrouter_default_model_prompt": "Nhập ID model OpenRouter để dùng làm default_model (Enter để hủy): ",
@@ -159,6 +164,16 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "config_profile_applied": "[green]Đã áp dụng profile [cyan]'{name}'[/cyan] cho phiên hiện tại.[/green]",
         "config_language_set_success": "[green]Đã đặt ngôn ngữ mặc định của Termi thành '{language}'.[/green]",
         "config_invalid_language": "[bold red]Ngôn ngữ '{language}' không được hỗ trợ. Chỉ hỗ trợ 'vi' hoặc 'en'.[/bold red]",
+
+        # OpenAI Compatible specific
+        "config_openai_compatible_url_prompt": "Nhập Base URL (mặc định: {default}, Enter để giữ): ",
+        "config_openai_compatible_key_prompt": "Nhập API Key (mặc định: {default}, Enter để giữ): ",
+        "config_openai_compatible_fetching_models": "[yellow]Đang thử kết nối lấy danh sách model từ {url}...[/yellow]",
+        "config_openai_compatible_fetch_error": "[bold red]Không thể lấy danh sách model từ URL trên ({error}). Bạn có muốn nhập tên model thủ công không? (y/n): [/bold red]",
+        "config_openai_compatible_manual_model_prompt": "Nhập tên model thủ công (ví dụ: gpt-3.5-turbo, my-local-model): ",
+        "config_openai_compatible_select_prompt": "Chọn model từ danh sách server (nhập số thứ tự): ",
+        "config_openai_compatible_saved": "[green]Đã lưu cấu hình OpenAI Compatible (URL: {url}).[/green]",
+        "config_model_provider_hint_openai_compatible": "[dim]Provider: Generic OpenAI Compatible (URL tùy chỉnh).[/dim]",
 
         # Utils.execute_suggested_commands
         "utils_ai_suggested_commands": "\n[bold yellow]AI đã đề xuất {count} lệnh thực thi:[/bold yellow]",
@@ -316,6 +331,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_history_saved_to": "\n[bold yellow]Chat history saved to '{path}'.[/bold yellow]",
         "chat_cannot_save_history_error": "\n[yellow]Could not save history: {error}[/yellow]",
         "chat_generic_error": "[bold red]Error: {error}[/bold red]",
+        "chat_image_added": "[green]Attached image: {path}[/green]",
+        "chat_image_load_failed": "[bold red]Error: Could not load image '{path}'. Details: {error}[/bold red]",
+        "chat_file_added": "[green]Attached file content: {path}[/green]",
+        "chat_file_read_failed": "[bold red]Error: Could not read file '{path}'. Details: {error}[/bold red]",
 
         # Config handler
         "config_fetching_models": "[bold green]Fetching available models...[/bold green]",
@@ -337,11 +356,12 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "config_model_provider_hint_groq": "[dim]Provider: Groq (HTTP chat/generate_text; Agent and Gemini tool-calls are not supported).[/dim]",
         "config_model_provider_hint_openrouter": "[dim]Provider: OpenRouter (HTTP chat/generate_text; Agent and Gemini tool-calls are not supported).[/dim]",
         "config_provider_selection_title": "Select model provider",
-        "config_provider_select_prompt": "Select provider (1=Gemini, 2=DeepSeek, 3=Groq, 4=OpenRouter): ",
+        "config_provider_select_prompt": "Select provider (1=Gemini, 2=DeepSeek, 3=Groq, 4=OpenRouter, 5=Ollama, 6=Generic OpenAI): ",
         "config_provider_desc_gemini": "Models directly from Google Gemini with full Agent/tool-calls support.",
         "config_provider_desc_deepseek": "DeepSeek models via HTTP OpenAI-compatible API, optimized for cost.",
         "config_provider_desc_groq": "Groq-hosted models (LLaMA/Mixtral) with very fast inference.",
         "config_provider_desc_openrouter": "Models from many providers via OpenRouter (including many free models).",
+        "config_provider_desc_openai_compatible": "Connect to any OpenAI-compatible server (LocalAI, vLLM, LM Studio, etc.).",
         "config_openrouter_intro_examples": "[dim]Tip: you can copy a model ID from https://openrouter.ai/models (e.g. meta-llama/llama-3.1-8b-instruct, mistralai/mixtral-8x7b-instruct).[/dim]",
         "config_openrouter_default_model_prompt": "Enter OpenRouter model ID to use as default_model (press Enter to cancel): ",
         "config_openrouter_code_model_prompt": "Enter OpenRouter model ID for code_model (press Enter to reuse default_model): ",
@@ -394,6 +414,16 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "config_profile_applied": "[green]Applied profile [cyan]'{name}'[/cyan] for this session.[/green]",
         "config_language_set_success": "[green]Set Termi default language to '{language}'.[/green]",
         "config_invalid_language": "[bold red]Language '{language}' is not supported. Only 'vi' or 'en' are allowed.[/bold red]",
+
+        # OpenAI Compatible specific
+        "config_openai_compatible_url_prompt": "Enter Base URL (default: {default}, Enter to keep): ",
+        "config_openai_compatible_key_prompt": "Enter API Key (default: {default}, Enter to keep): ",
+        "config_openai_compatible_fetching_models": "[yellow]Attempting to fetch model list from {url}...[/yellow]",
+        "config_openai_compatible_fetch_error": "[bold red]Could not fetch models from the URL ({error}). Do you want to enter the model name manually? (y/n): [/bold red]",
+        "config_openai_compatible_manual_model_prompt": "Enter model name manually (e.g. gpt-3.5-turbo, my-local-model): ",
+        "config_openai_compatible_select_prompt": "Select a model from the server list (enter a number): ",
+        "config_openai_compatible_saved": "[green]Saved Generic OpenAI configuration (URL: {url}).[/green]",
+        "config_model_provider_hint_openai_compatible": "[dim]Provider: Generic OpenAI Compatible (Custom URL).[/dim]",
 
         # Utils.execute_suggested_commands
         "utils_ai_suggested_commands": "\n[bold yellow]AI suggested {count} command(s):[/bold yellow]",
