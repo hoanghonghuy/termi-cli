@@ -940,13 +940,13 @@ class ChatService:
                         tool_args = {}
 
                     if tool_name and tool_loop_count < max_tool_loops:
+                        messages.append({"role": "assistant", "content": response_text})
                         tool_loop_count += 1
                         if tool_name not in api.AVAILABLE_TOOLS:
                             console.print(
                                 f"[yellow]Tool '{tool_name}' không tồn tại trong AVAILABLE_TOOLS.[/yellow]"
                             )
-                            # Add assistant response w/ invalid tool
-                            messages.append({"role": "assistant", "content": response_text})
+                            # Add assistant response w/ invalid tool - Already added above
                             console.print(f"[{style_response}]{response_text}[/{style_response}]")
                             utils.execute_suggested_commands(
                                 response_text, console
@@ -978,7 +978,10 @@ class ChatService:
                                 f"[bold cyan]Tool '{tool_name}' result:[/bold cyan] {observation}"
                             )
                         else:
-                            console.print(f"[dim]⚙️  Used tool '{tool_name}'...[/dim]")
+                            if observation.startswith("Error"): # Simple check
+                                console.print(f"[red]⚙️  {observation}[/red]")
+                            else:
+                                console.print(f"[dim]⚙️  Used tool '{tool_name}'...[/dim]")
                         
                         # Append tool result as tool role or user role depending on provider support.
                         # For simplicity in "deepseek" mode (often generic OpenAI), we append as 'user' role saying "Tool output: ..." 
