@@ -295,7 +295,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "template_usage": "[dim]Sử dụng: /template use name | /template add name content | /template[/dim]",
         
         # Theme system
-        "theme_list_title": "[bold cyan]\ud83c\udfa8 Themes khả dụng:[/bold cyan]",
+        "theme_list_title": "[bold cyan]Themes khả dụng:[/bold cyan]",
         "theme_current": "[dim]Theme hiện tại: {name}[/dim]",
         "theme_switched": "[green]Đã chuyển sang theme '{name}'[/green]",
         "theme_not_found": "[yellow]Không tìm thấy theme '{name}'[/yellow]",
@@ -452,7 +452,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "template_usage": "[dim]Usage: /template use name | /template add name content | /template[/dim]",
         
         # Theme system
-        "theme_list_title": "[bold cyan]\ud83c\udfa8 Available themes:[/bold cyan]",
+        "theme_list_title": "[bold cyan]Available themes:[/bold cyan]",
         "theme_current": "[dim]Current theme: {name}[/dim]",
         "theme_switched": "[green]Switched to theme '{name}'[/green]",
         "theme_not_found": "[yellow]Theme '{name}' not found[/yellow]",
