@@ -11,6 +11,7 @@ import argparse
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
 
 from rich.console import Console
 
@@ -622,8 +623,6 @@ class ChatService:
                 # Export conversation
                 if prompt.strip().lower().startswith("/export"):
                     try:
-                        import json
-                        from pathlib import Path
                         parts = prompt.strip().split(maxsplit=1)
                         export_name = parts[1] if len(parts) > 1 else f"chat_export_{int(__import__('time').time())}"
                         if not export_name.endswith((".json", ".md")):

@@ -519,6 +519,15 @@ def _extract_language_from_argv(argv, default_language: str) -> str:
 def main(provided_args=None):
     """Hàm chính điều phối toàn bộ ứng dụng."""
     load_dotenv()
+    
+    # Fix UnicodeEncodeError on Windows PowerShell/CMD
+    if sys.platform == "win32":
+        try:
+            sys.stdout.reconfigure(encoding="utf-8")
+            sys.stderr.reconfigure(encoding="utf-8")
+        except AttributeError:
+            pass  # sys.stdout might be mocked or not standard
+
     _setup_logging()
 
     console = Console()

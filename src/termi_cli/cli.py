@@ -46,6 +46,13 @@ def create_parser(language: str = "vi"):
         formatter_class=argparse.RawTextHelpFormatter,
     )
 
+    parser.add_argument(
+        "--version",
+        action="version",
+        version="%(prog)s 1.0.0",
+        help="Show program's version number and exit." if language == "en" else "Hiển thị phiên bản phần mềm."
+    )
+
     # --- Chế độ hoạt động ---
     mode_group = parser.add_argument_group(mode_group_title)
     mode_group.add_argument(
