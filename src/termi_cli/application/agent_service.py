@@ -245,8 +245,6 @@ def _confirm_tool_execution(
     Returns:
         Tuple of (should_execute, possibly_modified_tool_args)
     """
-    import json
-    
     # If skip_all was previously selected, just execute
     if skip_all_ref and skip_all_ref[0]:
         return True, tool_args
