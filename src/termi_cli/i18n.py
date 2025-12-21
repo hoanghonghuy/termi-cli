@@ -224,7 +224,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 
         # MCP (Model Context Protocol)
         "mcp_no_servers": "[yellow]Chưa có MCP server nào được cấu hình.[/yellow]",
-        "mcp_server_list_title": "\ud83d\udce1 MCP Servers đã cấu hình",
+        "mcp_server_list_title": "MCP Servers đã cấu hình",
         "mcp_connecting": "[bold green]Đang kết nối tới MCP servers...[/bold green]",
         "mcp_connected": "[green]✅ {name}: {status}[/green]",
         "mcp_connect_failed": "[bold red]❌ {name}: {status}[/bold red]",
@@ -235,14 +235,14 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 
         # Voice Mode
         "voice_mode_not_available": "[bold red]Chế độ giọng nói không khả dụng. Cần cài: pip install sounddevice faster-whisper pyttsx3[/bold red]",
-        "voice_listening": "[bold cyan]\ud83c\udfa4 Đang nghe... (Nói xong thì im lặng để dừng)[/bold cyan]",
+        "voice_listening": "[bold cyan]Đang nghe... (Nói xong thì im lặng để dừng)[/bold cyan]",
         "voice_transcribing": "[dim]Đang nhận dạng giọng nói...[/dim]",
         "voice_you_said": "[green]Bạn nói:[/green] {text}",
         "voice_speaking": "[dim]Đang phát âm...[/dim]",
         "voice_error": "[bold red]Lỗi voice: {error}[/bold red]",
 
         # Chat slash commands
-        "chat_help_title": "[bold cyan]\ud83d\udcd6 Các lệnh Chat:[/bold cyan]",
+        "chat_help_title": "[bold cyan]Các lệnh Chat:[/bold cyan]",
         "chat_help_content": """  [green]/help[/green]     - Hiển thị trợ giúp này
   [green]/tools[/green]    - Liệt kê tools
   [green]/alias[/green]    - Quản lý phím tắt
@@ -269,10 +269,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_session_saved": "[green]Đã lưu phiên '{name}'.[/green]",
         "chat_session_loaded": "[green]Đã tải phiên '{name}' ({count} tin nhắn).[/green]",
         "chat_session_not_found": "[yellow]Không tìm thấy phiên '{name}'.[/yellow]",
-        "chat_session_list_title": "[bold cyan]\ud83d\udcc2 Phiên đã lưu:[/bold cyan]",
+        "chat_session_list_title": "[bold cyan]Phiên đã lưu:[/bold cyan]",
         "chat_no_sessions": "[dim]Chưa có phiên nào được lưu.[/dim]",
         "chat_speaking_response": "[dim]Đang đọc phản hồi...[/dim]",
-        "chat_history_title": "[bold cyan]\ud83d\udcdc Lịch sử gần đây:[/bold cyan]",
+        "chat_history_title": "[bold cyan]Lịch sử gần đây:[/bold cyan]",
         "chat_history_found": "[green]Tìm thấy {count} kết quả:[/green]",
         "chat_history_no_match": "[yellow]Không tìm thấy kết quả.[/yellow]",
         "chat_checking_update": "[dim]Đang kiểm tra cập nhật...[/dim]",
@@ -281,7 +281,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "alias_added": "[green]Đã thêm alias '{name}' -> '{cmd}'[/green]",
         "alias_removed": "[green]Đã xóa alias '{name}'[/green]",
         "alias_not_found": "[yellow]Không tìm thấy alias '{name}'[/yellow]",
-        "alias_list_title": "[bold cyan]\ud83d\udd17 Danh sách alias:[/bold cyan]",
+        "alias_list_title": "[bold cyan]Danh sách alias:[/bold cyan]",
         "alias_empty": "[dim]Chưa có alias nào.[/dim]",
         "alias_usage": "[dim]Sử dụng: /alias add name command | /alias remove name | /alias[/dim]",
         
@@ -289,7 +289,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "template_added": "[green]Đã thêm template '{name}'[/green]",
         "template_removed": "[green]Đã xóa template '{name}'[/green]",
         "template_not_found": "[yellow]Không tìm thấy template '{name}'[/yellow]",
-        "template_list_title": "[bold cyan]\ud83d\udcdd Danh sách template:[/bold cyan]",
+        "template_list_title": "[bold cyan]Danh sách template:[/bold cyan]",
         "template_empty": "[dim]Chưa có template nào.[/dim]",
         "template_applied": "[dim]Đã áp dụng template '{name}'[/dim]",
         "template_usage": "[dim]Sử dụng: /template use name | /template add name content | /template[/dim]",
@@ -381,7 +381,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 
         # MCP (Model Context Protocol)
         "mcp_no_servers": "[yellow]No MCP servers configured.[/yellow]",
-        "mcp_server_list_title": "\ud83d\udce1 Configured MCP Servers",
+        "mcp_server_list_title": "Configured MCP Servers",
         "mcp_connecting": "[bold green]Connecting to MCP servers...[/bold green]",
         "mcp_connected": "[green]✅ {name}: {status}[/green]",
         "mcp_connect_failed": "[bold red]❌ {name}: {status}[/bold red]",
@@ -392,14 +392,14 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
 
         # Voice Mode
         "voice_mode_not_available": "[bold red]Voice mode not available. Install: pip install sounddevice faster-whisper pyttsx3[/bold red]",
-        "voice_listening": "[bold cyan]\ud83c\udfa4 Listening... (Pause to stop recording)[/bold cyan]",
+        "voice_listening": "[bold cyan]Listening... (Pause to stop recording)[/bold cyan]",
         "voice_transcribing": "[dim]Transcribing...[/dim]",
         "voice_you_said": "[green]You said:[/green] {text}",
         "voice_speaking": "[dim]Speaking...[/dim]",
         "voice_error": "[bold red]Voice error: {error}[/bold red]",
 
         # Chat slash commands
-        "chat_help_title": "[bold cyan]\ud83d\udcd6 Chat Commands:[/bold cyan]",
+        "chat_help_title": "[bold cyan]Chat Commands:[/bold cyan]",
         "chat_help_content": """  [green]/help[/green]     - Show help
   [green]/tools[/green]    - List tools
   [green]/alias[/green]    - Manage aliases
@@ -426,10 +426,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "chat_session_saved": "[green]Session '{name}' saved.[/green]",
         "chat_session_loaded": "[green]Session '{name}' loaded ({count} messages).[/green]",
         "chat_session_not_found": "[yellow]Session '{name}' not found.[/yellow]",
-        "chat_session_list_title": "[bold cyan]\ud83d\udcc2 Saved sessions:[/bold cyan]",
+        "chat_session_list_title": "[bold cyan]Saved sessions:[/bold cyan]",
         "chat_no_sessions": "[dim]No saved sessions.[/dim]",
         "chat_speaking_response": "[dim]Speaking response...[/dim]",
-        "chat_history_title": "[bold cyan]\ud83d\udcdc Recent history:[/bold cyan]",
+        "chat_history_title": "[bold cyan]Recent history:[/bold cyan]",
         "chat_history_found": "[green]Found {count} matches:[/green]",
         "chat_history_no_match": "[yellow]No matches found.[/yellow]",
         "chat_checking_update": "[dim]Checking for updates...[/dim]",
@@ -438,7 +438,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "alias_added": "[green]Added alias '{name}' -> '{cmd}'[/green]",
         "alias_removed": "[green]Removed alias '{name}'[/green]",
         "alias_not_found": "[yellow]Alias '{name}' not found[/yellow]",
-        "alias_list_title": "[bold cyan]\ud83d\udd17 Aliases:[/bold cyan]",
+        "alias_list_title": "[bold cyan]Aliases:[/bold cyan]",
         "alias_empty": "[dim]No aliases defined.[/dim]",
         "alias_usage": "[dim]Usage: /alias add name command | /alias remove name | /alias[/dim]",
         
@@ -446,7 +446,7 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "template_added": "[green]Added template '{name}'[/green]",
         "template_removed": "[green]Removed template '{name}'[/green]",
         "template_not_found": "[yellow]Template '{name}' not found[/yellow]",
-        "template_list_title": "[bold cyan]\ud83d\udcdd Templates:[/bold cyan]",
+        "template_list_title": "[bold cyan]Templates:[/bold cyan]",
         "template_empty": "[dim]No templates defined.[/dim]",
         "template_applied": "[dim]Applied template '{name}'[/dim]",
         "template_usage": "[dim]Usage: /template use name | /template add name content | /template[/dim]",
