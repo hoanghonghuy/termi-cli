@@ -174,6 +174,10 @@ def _get_safe_agent_model(console: Console, config: dict) -> str:
     if provider == "gemini":
         return agent_model
 
+    # OpenAI Compatible is treated as safe/supported now
+    if provider == "openai_compatible":
+        return agent_model
+
     allow_http_for_agent = config.get("agent_allow_http", False)
     if allow_http_for_agent:
         return agent_model

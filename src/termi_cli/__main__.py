@@ -145,6 +145,10 @@ def _requires_gemini_for_command(config: dict, args) -> bool:
         if isinstance(agent_model, str) and api.is_ollama_model(agent_model):
             return False
 
+        # Allow generic OpenAI models (via openai_compatible provider)
+        if isinstance(agent_model, str) and api.is_generic_openai_model(agent_model):
+            return False
+
         if allow_http_for_agent and _is_http_model_name(agent_model):
             return False
         return True
