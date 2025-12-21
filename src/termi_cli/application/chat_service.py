@@ -87,7 +87,7 @@ class ChatService:
                 return candidate
         return "models/gemini-flash-latest"
 
-    def run_chat_mode(
+    def run_chat_mode_legacy(
         self,
         chat_session,
         console: Console,
@@ -262,7 +262,7 @@ class ChatService:
                         )
                     )
 
-    def run_chat_mode_deepseek(
+    def run_chat_mode(
         self,
         console: Console,
         config: dict,
@@ -273,11 +273,19 @@ class ChatService:
 
         opts = HttpChatOptions.from_args(config, args)
         language = opts.language
-        console.print(i18n.tr(language, "chat_mode_intro"))
+        console.print(f"[{style_system}]{i18n.tr(language, 'chat_mode_intro')}[/{style_system}]")
 
         model_name = opts.model_name
         # Messages list chuẩn OpenAI: [{"role": "user", "content": ...}]
         messages: list[dict] = []
+        
+        # Theme & Auto-complete
+        from termi_cli.application import theme_manager, autocomplete
+        
+        style_prompt = theme_manager.get_theme_style("user_prompt") or "bold white"
+        style_response = theme_manager.get_theme_style("ai_response") or "white"
+        style_system = theme_manager.get_theme_style("system_message") or "dim"
+
 
         tool_names = ", ".join(sorted(api.AVAILABLE_TOOLS.keys()))
         tool_usage_hint = (
@@ -331,9 +339,16 @@ class ChatService:
                 if initial_prompt:
                     prompt = initial_prompt
                     initial_prompt = None
-                    console.print(f"\n{user_label} {prompt}")
+                    console.print(f"\n[{style_prompt}]{user_label}[/{style_prompt}] {prompt}")
                 else:
-                    prompt = console.input(f"\n{user_label} ")
+                    if autocomplete.is_autocomplete_available():
+                        # Print label with Rich style first
+                        console.print(f"\n[{style_prompt}]{user_label}[/{style_prompt}] ", end="")
+                        # Let prompt_toolkit handle input
+                        prompt = autocomplete.get_input_with_autocomplete("")
+                        # Clear the extra newline potentially added by print
+                    else:
+                        prompt = console.input(f"\n[{style_prompt}]{user_label}[/{style_prompt}] ")
                 
                 # Xử lý lệnh slash command
                 if prompt.startswith("/image "):
@@ -649,7 +664,7 @@ class ChatService:
                 if not prompt.strip() and not pending_images and not pending_files_content:
                     continue
 
-                console.print(f"\n{ai_label}")
+                console.print(f"\n[{style_response}]{ai_label}[/{style_response}]")
 
                 # Xây dựng nội dung tin nhắn User
                 user_text_part = prompt
@@ -843,7 +858,7 @@ class ChatService:
                             )
                             # Add assistant response w/ invalid tool
                             messages.append({"role": "assistant", "content": response_text})
-                            console.print(response_text)
+                            console.print(f"[{style_response}]{response_text}[/{style_response}]")
                             utils.execute_suggested_commands(
                                 response_text, console
                             )
@@ -891,7 +906,7 @@ class ChatService:
 
                     # Normal response handling
                     messages.append({"role": "assistant", "content": response_text})
-                    console.print(response_text)
+                    console.print(f"[{style_response}]{response_text}[/{style_response}]")
                     utils.execute_suggested_commands(response_text, console)
                     break
 

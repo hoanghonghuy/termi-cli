@@ -435,7 +435,7 @@ def run_cli(
         model_name = args.model or config.get("default_model")
 
         if api.is_ollama_model(model_name) or api.is_openrouter_model(model_name) or api.is_generic_openai_model(model_name) or getattr(model_name, "startswith", lambda _x: False)("deepseek-") or getattr(model_name, "startswith", lambda _x: False)("groq-"):
-            chat_handler.run_chat_mode_deepseek(console, config, args, system_instruction_str)
+            chat_handler.run_chat_mode(console, config, args, system_instruction_str)
         else:
             chat_session = api.start_chat_session(
                 model_name,
@@ -443,7 +443,7 @@ def run_cli(
                 history,
                 cli_help_text=cli_help_text,
             )
-            chat_handler.run_chat_mode(chat_session, console, config, args)
+            chat_handler.run_chat_mode_legacy(chat_session, console, config, args)
         return
 
     # --- Single-turn ---
