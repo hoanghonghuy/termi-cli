@@ -191,6 +191,123 @@ def run_cli(
         config_handler.remove_profile(console, config, args.rm_profile)
         return
 
+    # --- Codebase RAG commands (không cần API key) ---
+    if getattr(args, "index_codebase", None) is not None:
+        from termi_cli.rag import codebase_indexer
+        directory = args.index_codebase or "."
+        index_name = getattr(args, "rag_index", "default")
+        console.print(i18n.tr(language, "rag_indexing_start", directory=directory))
+        try:
+            stats = codebase_indexer.index_codebase(directory, index_name)
+            if "error" in stats and stats["error"]:
+                console.print(i18n.tr(language, "rag_indexing_error", error=stats["error"]))
+            else:
+                console.print(i18n.tr(
+                    language, "rag_indexing_complete",
+                    files=stats.get("files", 0),
+                    chunks=stats.get("chunks", 0),
+                ))
+                if stats.get("errors"):
+                    for err in stats["errors"][:5]:  # Show first 5 errors
+                        console.print(f"[dim red]{err}[/dim red]")
+        except Exception as e:
+            console.print(i18n.tr(language, "rag_indexing_error", error=str(e)))
+        return
+
+    if getattr(args, "clear_index", False):
+        from termi_cli.rag import codebase_indexer
+        index_name = getattr(args, "rag_index", "default")
+        if codebase_indexer.clear_index(index_name):
+            console.print(i18n.tr(language, "rag_index_cleared", name=index_name))
+        else:
+            console.print(i18n.tr(language, "rag_index_clear_failed"))
+        return
+
+    if getattr(args, "index_stats", False):
+        from termi_cli.rag import codebase_indexer
+        index_name = getattr(args, "rag_index", "default")
+        stats = codebase_indexer.get_index_stats(index_name)
+        if stats.get("available", False):
+            console.print(i18n.tr(
+                language, "rag_index_stats",
+                name=stats.get("name", index_name),
+                count=stats.get("count", 0),
+            ))
+        else:
+            console.print(i18n.tr(language, "rag_index_not_available"))
+        return
+
+    # --- MCP commands ---
+    if getattr(args, "mcp_list", False):
+        from termi_cli.mcp import config as mcp_config
+        from rich.table import Table
+        
+        servers = mcp_config.get_mcp_servers()
+        if not servers:
+            console.print(i18n.tr(language, "mcp_no_servers"))
+        else:
+            table = Table(title=i18n.tr(language, "mcp_server_list_title"))
+            table.add_column("Name", style="cyan")
+            table.add_column("Transport", style="yellow")
+            table.add_column("Command/URL", style="dim")
+            table.add_column("Enabled", style="green")
+            
+            for server in servers:
+                cmd_or_url = " ".join(server.get("command", [])) or server.get("url", "-")
+                enabled = "✅" if server.get("enabled", True) else "❌"
+                table.add_row(
+                    server.get("name", "?"),
+                    server.get("transport", "stdio"),
+                    cmd_or_url[:50] + ("..." if len(cmd_or_url) > 50 else ""),
+                    enabled,
+                )
+            console.print(table)
+        return
+
+    if getattr(args, "mcp_add", None):
+        from termi_cli.mcp import config as mcp_config
+        
+        add_args = args.mcp_add
+        if len(add_args) < 2:
+            console.print(i18n.tr(language, "mcp_add_usage"))
+            return
+        
+        name = add_args[0]
+        command = add_args[1:]
+        
+        try:
+            mcp_config.add_mcp_server(name=name, transport="stdio", command=command)
+            console.print(i18n.tr(language, "mcp_server_added", name=name))
+        except ValueError as e:
+            console.print(f"[bold red]{e}[/bold red]")
+        return
+
+    if getattr(args, "mcp_remove", None):
+        from termi_cli.mcp import config as mcp_config
+        
+        name = args.mcp_remove
+        if mcp_config.remove_mcp_server(name):
+            console.print(i18n.tr(language, "mcp_server_removed", name=name))
+        else:
+            console.print(i18n.tr(language, "mcp_server_not_found", name=name))
+        return
+
+    if getattr(args, "mcp_connect", False):
+        from termi_cli.mcp import client as mcp_client
+        
+        console.print(i18n.tr(language, "mcp_connecting"))
+        results = mcp_client.connect_mcp_servers()
+        
+        if not results:
+            console.print(i18n.tr(language, "mcp_no_servers"))
+        else:
+            for name, status in results.items():
+                if "Failed" in status or "error" in status.lower():
+                    console.print(i18n.tr(language, "mcp_connect_failed", name=name, status=status))
+                else:
+                    console.print(i18n.tr(language, "mcp_connected", name=name, status=status))
+        return
+
     # Cho phép liệt kê tools mà không cần GOOGLE_API_KEY
     if getattr(args, "list_tools", False):
         api.list_tools(console)

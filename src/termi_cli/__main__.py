@@ -240,6 +240,20 @@ def _run_single_turn(console: Console, config: dict, language: str, parser, args
             "Using the following directory context as additional input:\n"
             f"{context}\n\n{prompt_text}"
         )
+
+    # RAG context injection when --rag flag is used
+    if getattr(args, "rag", False) and user_intent:
+        from termi_cli.rag import codebase_query
+        index_name = getattr(args, "rag_index", "default")
+        if codebase_query.is_index_available(index_name):
+            rag_context = codebase_query.get_codebase_context(user_intent, index_name)
+            if rag_context:
+                console.print(i18n.tr(language, "rag_context_found"))
+                prompt_text = f"{rag_context}\n---\n\n{prompt_text}"
+            else:
+                console.print(i18n.tr(language, "rag_no_context"))
+        else:
+            console.print(i18n.tr(language, "rag_index_not_available"))
     
     if args.image:
         if Image is None:

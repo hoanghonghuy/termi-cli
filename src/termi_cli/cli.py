@@ -61,6 +61,16 @@ def create_parser(language: str = "vi"):
         ),
     )
     mode_group.add_argument(
+        "--voice",
+        action="store_true",
+        help=(
+            "Enable voice mode: use microphone for input and speaker for output."
+            if language == "en"
+            else
+            "Bật chế độ giọng nói: dùng mic để nhập và loa để xuất."
+        ),
+    )
+    mode_group.add_argument(
         "--agent",
         action="store_true",
         help=(
@@ -93,6 +103,16 @@ def create_parser(language: str = "vi"):
             if language == "en"
             else
             "Giới hạn số bước tối đa cho Agent trong phiên này."
+        ),
+    )
+    mode_group.add_argument(
+        "--agent-interactive",
+        action="store_true",
+        help=(
+            "Enable interactive Agent mode with confirmation prompts before executing tools."
+            if language == "en"
+            else
+            "Bật chế độ Agent tương tác, hỏi xác nhận trước khi thực thi tool."
         ),
     )
 
@@ -472,6 +492,114 @@ def create_parser(language: str = "vi"):
             if language == "en"
             else
             "Tìm kiếm trong trí nhớ dài hạn và in các tương tác liên quan."
+        ),
+    )
+
+    # --- Codebase RAG ---
+    rag_group_title = "Codebase RAG" if language == "en" else "RAG Codebase"
+    rag_group = parser.add_argument_group(rag_group_title)
+    rag_group.add_argument(
+        "--index-codebase",
+        type=str,
+        nargs="?",
+        const=".",
+        metavar="DIRECTORY",
+        help=(
+            "Index a codebase directory for RAG queries.\\n"
+            "Defaults to current directory if no path specified."
+            if language == "en"
+            else
+            "Tạo index codebase để hỏi đáp RAG.\\n"
+            "Mặc định thư mục hiện tại nếu không chỉ định."
+        ),
+    )
+    rag_group.add_argument(
+        "--rag",
+        action="store_true",
+        help=(
+            "Enable RAG mode: automatically search indexed codebase for context."
+            if language == "en"
+            else
+            "Bật chế độ RAG: tự động tìm kiếm codebase đã index để lấy context."
+        ),
+    )
+    rag_group.add_argument(
+        "--rag-index",
+        type=str,
+        metavar="NAME",
+        default="default",
+        help=(
+            "Name of the RAG index to use (default: 'default')."
+            if language == "en"
+            else
+            "Tên index RAG sử dụng (mặc định: 'default')."
+        ),
+    )
+    rag_group.add_argument(
+        "--clear-index",
+        action="store_true",
+        help=(
+            "Clear the codebase index."
+            if language == "en"
+            else
+            "Xóa index codebase."
+        ),
+    )
+    rag_group.add_argument(
+        "--index-stats",
+        action="store_true",
+        help=(
+            "Show statistics about the codebase index."
+            if language == "en"
+            else
+            "Hiển thị thống kê về index codebase."
+        ),
+    )
+
+    # --- MCP (Model Context Protocol) ---
+    mcp_group_title = "MCP Servers" if language == "en" else "MCP Server"
+    mcp_group = parser.add_argument_group(mcp_group_title)
+    mcp_group.add_argument(
+        "--mcp-connect",
+        action="store_true",
+        help=(
+            "Connect to all configured MCP servers and discover tools."
+            if language == "en"
+            else
+            "Kết nối tới tất cả MCP server đã cấu hình và khám phá tools."
+        ),
+    )
+    mcp_group.add_argument(
+        "--mcp-list",
+        action="store_true",
+        help=(
+            "List configured MCP servers."
+            if language == "en"
+            else
+            "Liệt kê các MCP server đã cấu hình."
+        ),
+    )
+    mcp_group.add_argument(
+        "--mcp-add",
+        type=str,
+        nargs="+",
+        metavar=("NAME", "COMMAND"),
+        help=(
+            "Add an MCP server (stdio transport). Example: --mcp-add myserver npx -y @mcp/server"
+            if language == "en"
+            else
+            "Thêm MCP server (stdio). Ví dụ: --mcp-add myserver npx -y @mcp/server"
+        ),
+    )
+    mcp_group.add_argument(
+        "--mcp-remove",
+        type=str,
+        metavar="NAME",
+        help=(
+            "Remove an MCP server by name."
+            if language == "en"
+            else
+            "Xóa MCP server theo tên."
         ),
     )
 

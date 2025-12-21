@@ -226,6 +226,72 @@ def _get_gemini_fallback_model(config: dict) -> str:
     return "models/gemini-flash-latest"
 
 
+def _confirm_tool_execution(
+    console: Console,
+    tool_name: str,
+    tool_args: dict,
+    language: str,
+    skip_all_ref: list,
+) -> tuple[bool, dict]:
+    """Interactive confirmation for tool execution.
+    
+    Args:
+        console: Rich console for I/O
+        tool_name: Name of the tool to execute
+        tool_args: Arguments for the tool
+        language: Language code for i18n
+        skip_all_ref: Mutable list to track skip_all state [bool]
+        
+    Returns:
+        Tuple of (should_execute, possibly_modified_tool_args)
+    """
+    import json
+    
+    # If skip_all was previously selected, just execute
+    if skip_all_ref and skip_all_ref[0]:
+        return True, tool_args
+    
+    # Show confirmation prompt
+    console.print(i18n.tr(
+        language,
+        "agent_interactive_confirm_tool",
+        tool_name=tool_name,
+        tool_args=json.dumps(tool_args, indent=2, ensure_ascii=False),
+    ))
+    
+    choice = console.input(
+        i18n.tr(language, "agent_interactive_confirm_prompt")
+    ).strip().lower()
+    
+    if choice in ("y", "yes", ""):
+        return True, tool_args
+    elif choice in ("s", "skip"):
+        if skip_all_ref:
+            skip_all_ref[0] = True
+        console.print(i18n.tr(language, "agent_interactive_skip_all"))
+        return True, tool_args
+    elif choice in ("e", "edit"):
+        new_args_str = console.input(
+            i18n.tr(language, "agent_interactive_edit_prompt")
+        ).strip()
+        if new_args_str:
+            try:
+                new_args = json.loads(new_args_str)
+                if isinstance(new_args, dict):
+                    return True, new_args
+            except json.JSONDecodeError:
+                console.print(i18n.tr(language, "agent_interactive_edit_invalid"))
+        return True, tool_args
+    else:
+        # n, no, or anything else = skip this tool
+        console.print(i18n.tr(
+            language,
+            "agent_interactive_skipped",
+            tool_name=tool_name,
+        ))
+        return False, tool_args
+
+
 def _execute_tool(
     console: Console, tool_name: str, tool_args: dict, dry_run: bool = False
 ) -> str:
@@ -543,6 +609,13 @@ class AgentService:
         )
         max_steps = ctx.max_steps
 
+        # Interactive mode setup
+        interactive_mode = getattr(args, "agent_interactive", False)
+        skip_all_confirmations = [False]  # Mutable list to track state across iterations
+        
+        if interactive_mode and not dry_run:
+            console.print(i18n.tr(language, "agent_interactive_mode_header"))
+
         for step in range(max_steps):
             iteration_header = i18n.tr(
                 language,
@@ -628,6 +701,21 @@ class AgentService:
                             )
                         )
                         return
+
+                    # Interactive confirmation before execution
+                    if interactive_mode and not dry_run:
+                        should_execute, tool_args = _confirm_tool_execution(
+                            console, tool_name, tool_args, language, skip_all_confirmations
+                        )
+                        if not should_execute:
+                            observation = f"User skipped tool '{tool_name}'."
+                            scratchpad += (
+                                f"\n\n**Step {step + 1}:**\n"
+                                f"- **Thought:** {thought}\n"
+                                f"- **Action:** Tried to call `{tool_name}` but user skipped.\n"
+                                f"- **Observation:** {observation}"
+                            )
+                            break
 
                     observation = _execute_tool(
                         console, tool_name, tool_args, dry_run=dry_run
@@ -757,6 +845,13 @@ class AgentService:
             "This was the result of my last action:\n\n{observation}\n\n"
             "Based on this, what is my next thought and action?"
         )
+
+        # Interactive mode setup
+        interactive_mode = getattr(args, "agent_interactive", False)
+        skip_all_confirmations = [False]  # Mutable list to track state across iterations
+        
+        if interactive_mode and not dry_run:
+            console.print(i18n.tr(language, "agent_interactive_mode_header"))
 
         for step in range(max_steps):
             iteration_header = i18n.tr(
@@ -898,6 +993,15 @@ class AgentService:
                         )
                     )
                     return
+
+                # Interactive confirmation before execution
+                if interactive_mode and not dry_run:
+                    should_execute, tool_args = _confirm_tool_execution(
+                        console, tool_name, tool_args, language, skip_all_confirmations
+                    )
+                    if not should_execute:
+                        previous_observation = f"User skipped tool '{tool_name}'."
+                        continue
 
                 observation = _execute_tool(
                     console, tool_name, tool_args, dry_run=dry_run

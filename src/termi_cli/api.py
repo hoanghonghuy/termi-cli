@@ -46,6 +46,7 @@ from termi_cli.tools import web_search, database, calendar_tool, email_tool, fil
 # Import các module con một cách an toàn
 from termi_cli.tools import instruction_tool
 from termi_cli.tools import code_tool
+from termi_cli.tools import git_advanced_tool
 from termi_cli.prompts import build_enhanced_instruction
 from termi_cli.config import APP_DIR
 from termi_cli.infrastructure import http_providers
@@ -186,6 +187,13 @@ AVAILABLE_TOOLS = {
     shell_tool.execute_command.__name__: shell_tool.execute_command,
     system_time_tool.get_current_time.__name__: system_time_tool.get_current_time,
     system_status_tool.get_cli_uptime.__name__: system_status_tool.get_cli_uptime,
+    # Advanced Git tools
+    git_advanced_tool.get_merge_conflicts.__name__: git_advanced_tool.get_merge_conflicts,
+    git_advanced_tool.get_conflict_content.__name__: git_advanced_tool.get_conflict_content,
+    git_advanced_tool.resolve_conflict_in_file.__name__: git_advanced_tool.resolve_conflict_in_file,
+    git_advanced_tool.generate_changelog.__name__: git_advanced_tool.generate_changelog,
+    git_advanced_tool.get_pr_diff.__name__: git_advanced_tool.get_pr_diff,
+    git_advanced_tool.get_branch_info.__name__: git_advanced_tool.get_branch_info,
 }
 
 # Hợp nhất plugin tools (nếu có), ưu tiên giữ nguyên core tools khi trùng tên

@@ -211,6 +211,36 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "code_result_title": "\n[bold green]\u2728 Kết quả {tool_name}:[/bold green]",
         "code_error_saving_file": "[bold red]Lỗi khi lưu file: {error}[/bold red]",
 
+        # RAG Codebase
+        "rag_indexing_start": "[bold green]🔍 Đang index codebase tại '{directory}'...[/bold green]",
+        "rag_indexing_complete": "[bold green]✅ Đã index xong: {files} files, {chunks} chunks.[/bold green]",
+        "rag_indexing_error": "[bold red]Lỗi khi index codebase: {error}[/bold red]",
+        "rag_index_cleared": "[green]Đã xóa index codebase '{name}'.[/green]",
+        "rag_index_clear_failed": "[bold red]Không thể xóa index codebase.[/bold red]",
+        "rag_index_stats": "[dim]📊 Index '{name}': {count} chunks đã lưu.[/dim]",
+        "rag_index_not_available": "[yellow]Chưa có index codebase nào. Chạy --index-codebase trước.[/yellow]",
+        "rag_context_found": "[dim]🔍 Đã tìm thấy context từ codebase...[/dim]",
+        "rag_no_context": "[dim]Không tìm thấy context liên quan trong codebase.[/dim]",
+
+        # MCP (Model Context Protocol)
+        "mcp_no_servers": "[yellow]Chưa có MCP server nào được cấu hình.[/yellow]",
+        "mcp_server_list_title": "\ud83d\udce1 MCP Servers đã cấu hình",
+        "mcp_connecting": "[bold green]Đang kết nối tới MCP servers...[/bold green]",
+        "mcp_connected": "[green]✅ {name}: {status}[/green]",
+        "mcp_connect_failed": "[bold red]❌ {name}: {status}[/bold red]",
+        "mcp_server_added": "[green]Đã thêm MCP server '{name}'.[/green]",
+        "mcp_server_removed": "[green]Đã xóa MCP server '{name}'.[/green]",
+        "mcp_server_not_found": "[yellow]Không tìm thấy MCP server '{name}'.[/yellow]",
+        "mcp_add_usage": "[yellow]Sử dụng: --mcp-add NAME COMMAND...[/yellow]",
+
+        # Voice Mode
+        "voice_mode_not_available": "[bold red]Chế độ giọng nói không khả dụng. Cần cài: pip install sounddevice faster-whisper pyttsx3[/bold red]",
+        "voice_listening": "[bold cyan]\ud83c\udfa4 Đang nghe... (Nói xong thì im lặng để dừng)[/bold cyan]",
+        "voice_transcribing": "[dim]Đang nhận dạng giọng nói...[/dim]",
+        "voice_you_said": "[green]Bạn nói:[/green] {text}",
+        "voice_speaking": "[dim]Đang phát âm...[/dim]",
+        "voice_error": "[bold red]Lỗi voice: {error}[/bold red]",
+
         # Agent handler
         "agent_project_name_default": "Không có tên",
         "agent_reasoning_default": "Không có giải thích.",
@@ -253,6 +283,15 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "agent_mode_label": "[dim]Chế độ: {mode}[/dim]",
         "agent_session_summary": "[bold green]✅ Agent đã hoàn thành sau {steps} bước (dry-run: {flag}).[/bold green]",
         "agent_max_steps_override": "[dim]Giới hạn bước tối đa cho Agent trong phiên này: {max_steps} bước.[/dim]",
+
+        # Interactive Agent
+        "agent_interactive_mode_header": "[bold yellow]🤝 Agent tương tác: sẽ hỏi xác nhận trước khi thực thi tool.[/bold yellow]",
+        "agent_interactive_confirm_tool": "\n[bold yellow]⚠️ Agent muốn chạy tool '[cyan]{tool_name}[/cyan]' với tham số:[/bold yellow]\n{tool_args}\n",
+        "agent_interactive_confirm_prompt": "Bạn có muốn thực thi tool này không? [y]es/[n]o/[e]dit/[s]kip all: ",
+        "agent_interactive_skipped": "[yellow]Đã bỏ qua tool '{tool_name}'.[/yellow]",
+        "agent_interactive_skip_all": "[yellow]Đã tắt chế độ xác nhận cho các bước còn lại.[/yellow]",
+        "agent_interactive_edit_prompt": "Nhập JSON mới cho tool_args (Enter để giữ nguyên): ",
+        "agent_interactive_edit_invalid": "[bold red]JSON không hợp lệ, giữ nguyên tham số cũ.[/bold red]",
     },
     "en": {
         # General errors & bootstrap
@@ -268,6 +307,37 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "memory_reset_success": "[green]Successfully reset the long-term memory database (memory_db).[/green]",
         "memory_reset_error": "[red]Could not reset the long-term memory database. See logs/termi.log for details.[/red]",
         "memory_saved_interaction": "[dim]Saved 1 interaction to long-term memory.[/dim]",
+
+        # RAG Codebase
+        "rag_indexing_start": "[bold green]🔍 Indexing codebase at '{directory}'...[/bold green]",
+        "rag_indexing_complete": "[bold green]✅ Indexing complete: {files} files, {chunks} chunks.[/bold green]",
+        "rag_indexing_error": "[bold red]Error indexing codebase: {error}[/bold red]",
+        "rag_index_cleared": "[green]Cleared codebase index '{name}'.[/green]",
+        "rag_index_clear_failed": "[bold red]Could not clear codebase index.[/bold red]",
+        "rag_index_stats": "[dim]📊 Index '{name}': {count} chunks stored.[/dim]",
+        "rag_index_not_available": "[yellow]No codebase index available. Run --index-codebase first.[/yellow]",
+        "rag_context_found": "[dim]🔍 Found context from codebase...[/dim]",
+        "rag_no_context": "[dim]No relevant context found in codebase.[/dim]",
+
+        # MCP (Model Context Protocol)
+        "mcp_no_servers": "[yellow]No MCP servers configured.[/yellow]",
+        "mcp_server_list_title": "\ud83d\udce1 Configured MCP Servers",
+        "mcp_connecting": "[bold green]Connecting to MCP servers...[/bold green]",
+        "mcp_connected": "[green]✅ {name}: {status}[/green]",
+        "mcp_connect_failed": "[bold red]❌ {name}: {status}[/bold red]",
+        "mcp_server_added": "[green]Added MCP server '{name}'.[/green]",
+        "mcp_server_removed": "[green]Removed MCP server '{name}'.[/green]",
+        "mcp_server_not_found": "[yellow]MCP server '{name}' not found.[/yellow]",
+        "mcp_add_usage": "[yellow]Usage: --mcp-add NAME COMMAND...[/yellow]",
+
+        # Voice Mode
+        "voice_mode_not_available": "[bold red]Voice mode not available. Install: pip install sounddevice faster-whisper pyttsx3[/bold red]",
+        "voice_listening": "[bold cyan]\ud83c\udfa4 Listening... (Pause to stop recording)[/bold cyan]",
+        "voice_transcribing": "[dim]Transcribing...[/dim]",
+        "voice_you_said": "[green]You said:[/green] {text}",
+        "voice_speaking": "[dim]Speaking...[/dim]",
+        "voice_error": "[bold red]Voice error: {error}[/bold red]",
+
         "memory_reset_confirm": "Are you sure you want to delete the long-term memory database (memory_db)? (y/n): ",
         "memory_reset_cancelled": "[yellow]Cancelled memory reset.[/yellow]",
         "config_reset_success": "[green]Successfully reset config to defaults and wrote it to '{path}'.[/green]",
@@ -503,6 +573,15 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "agent_mode_label": "[dim]Mode: {mode}[/dim]",
         "agent_session_summary": "[bold green]✅ Agent finished after {steps} step(s) (dry-run: {flag}).[/bold green]",
         "agent_max_steps_override": "[dim]Maximum number of Agent steps for this session: {max_steps}.[/dim]",
+
+        # Interactive Agent
+        "agent_interactive_mode_header": "[bold yellow]🤝 Interactive Agent: will ask for confirmation before executing tools.[/bold yellow]",
+        "agent_interactive_confirm_tool": "\n[bold yellow]⚠️ Agent wants to run tool '[cyan]{tool_name}[/cyan]' with args:[/bold yellow]\n{tool_args}\n",
+        "agent_interactive_confirm_prompt": "Do you want to execute this tool? [y]es/[n]o/[e]dit/[s]kip all: ",
+        "agent_interactive_skipped": "[yellow]Skipped tool '{tool_name}'.[/yellow]",
+        "agent_interactive_skip_all": "[yellow]Disabled confirmation for remaining steps.[/yellow]",
+        "agent_interactive_edit_prompt": "Enter new JSON for tool_args (Enter to keep original): ",
+        "agent_interactive_edit_invalid": "[bold red]Invalid JSON, keeping original args.[/bold red]",
     },
 }
 
