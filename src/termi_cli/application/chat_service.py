@@ -273,18 +273,19 @@ class ChatService:
 
         opts = HttpChatOptions.from_args(config, args)
         language = opts.language
+        
+        # Theme & Auto-complete initialization (moved up)
+        from termi_cli.application import theme_manager, autocomplete
+        style_prompt = theme_manager.get_theme_style("user_prompt") or "bold white"
+        style_response = theme_manager.get_theme_style("ai_response") or "white"
+        style_system = theme_manager.get_theme_style("system_message") or "dim"
         console.print(f"[{style_system}]{i18n.tr(language, 'chat_mode_intro')}[/{style_system}]")
 
         model_name = opts.model_name
         # Messages list chuẩn OpenAI: [{"role": "user", "content": ...}]
         messages: list[dict] = []
         
-        # Theme & Auto-complete
-        from termi_cli.application import theme_manager, autocomplete
-        
-        style_prompt = theme_manager.get_theme_style("user_prompt") or "bold white"
-        style_response = theme_manager.get_theme_style("ai_response") or "white"
-        style_system = theme_manager.get_theme_style("system_message") or "dim"
+
 
 
         tool_names = ", ".join(sorted(api.AVAILABLE_TOOLS.keys()))
