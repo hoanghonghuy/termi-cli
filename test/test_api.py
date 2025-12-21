@@ -55,42 +55,58 @@ def test_get_available_models(mocker):
     assert len(available_models) == 2
 
 def test_load_plugin_tools_returns_empty_when_no_plugins(tmp_path, monkeypatch):
-    """_load_plugin_tools trả về dict rỗng khi không có thư mục plugins."""
-    # Gán APP_DIR tạm thởi sang một thư mục trống
-    monkeypatch.setattr(api, "APP_DIR", tmp_path)
+    """_load_plugin_tools trả về dict rỗng khi không có plugin files."""
+    from termi_cli.application import plugin_manager
+    
+    # Tạo plugins dir rỗng (để ensure_plugins_dir không thêm sample)
+    empty_plugins_dir = tmp_path / "plugins"
+    empty_plugins_dir.mkdir()
+    
+    monkeypatch.setattr(plugin_manager, "PLUGINS_DIR", empty_plugins_dir)
+    
     tools = api._load_plugin_tools()
     assert tools == {}
 
 def test_load_plugin_tools_loads_valid_plugin(tmp_path, monkeypatch):
-    """_load_plugin_tools phải load được PLUGIN_TOOLS hợp lệ từ file plugin."""
-    plugins_root = tmp_path
-    plugins_dir = plugins_root / "plugins"
+    """_load_plugin_tools phải load được plugin với @termi_tool decorator."""
+    from termi_cli.application import plugin_manager
+    
+    plugins_dir = tmp_path / "plugins"
     plugins_dir.mkdir()
 
+    # Plugin sử dụng @termi_tool decorator (cách mới)
     plugin_file = plugins_dir / "sample_plugin.py"
     plugin_file.write_text(
+        "from termi_cli.api import termi_tool\n\n"
+        "@termi_tool\n"
         "def sample_tool():\n"
-        "    return 'OK'\n\n"
-        "PLUGIN_TOOLS = {'sample_tool': sample_tool}\n",
+        "    '''A sample tool.'''\n"
+        "    return 'OK'\n",
         encoding="utf-8",
     )
 
-    monkeypatch.setattr(api, "APP_DIR", plugins_root)
+    monkeypatch.setattr(plugin_manager, "PLUGINS_DIR", plugins_dir)
     tools = api._load_plugin_tools()
 
     assert "sample_tool" in tools
     assert callable(tools["sample_tool"])
 
 def test_load_plugin_tools_ignores_invalid_tools_dict(tmp_path, monkeypatch):
-    """Plugin với PLUGIN_TOOLS không phải dict phải bị bỏ qua."""
-    plugins_root = tmp_path
-    plugins_dir = plugins_root / "plugins"
+    """Plugin không có @termi_tool decorator sẽ không được load."""
+    from termi_cli.application import plugin_manager
+    
+    plugins_dir = tmp_path / "plugins"
     plugins_dir.mkdir()
 
+    # Plugin không có decorator - không nên được load
     plugin_file = plugins_dir / "bad_plugin.py"
-    plugin_file.write_text("PLUGIN_TOOLS = 'not-a-dict'\n", encoding="utf-8")
+    plugin_file.write_text(
+        "def not_a_tool():\n"
+        "    return 'not decorated'\n",
+        encoding="utf-8",
+    )
 
-    monkeypatch.setattr(api, "APP_DIR", plugins_root)
+    monkeypatch.setattr(plugin_manager, "PLUGINS_DIR", plugins_dir)
     tools = api._load_plugin_tools()
 
     assert tools == {}
